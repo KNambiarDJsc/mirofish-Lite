@@ -97,7 +97,7 @@ chmod +x start.sh
 
 ## 👨‍💻 Meet the Developer
 
-**MiroFish Lite** is developed and maintained by **Sidhardh Balaji**. If you're interested in multi-agent systems, AI simulations, or premium UI/UX, let's connect!
+**MiroFish Lite** is developed and maintained by **Sidhardh Balaji**. If you're interested in multi-agent systems, AI simulations let's connect!
 
 <div align="left">
 
