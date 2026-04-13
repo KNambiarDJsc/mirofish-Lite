@@ -11,6 +11,8 @@ import hashlib
 import json
 import logging
 import re
+import random
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -66,11 +68,12 @@ class GeminiService:
     """
 
     PRIMARY_MODEL = "gemini-2.0-flash"
-    FALLBACK_MODEL = "gemini-2.0-flash-lite"  # free-tier fallback on rate-limit
-    EMBEDDING_MODEL = "gemini-embedding-001"  # supports output_dimensionality; we use 768 for pgvector compat
-    EMBEDDING_DIM = 768  # Matryoshka truncation — stays within ivfflat 2K limit
-
+    FALLBACK_MODEL = "gemini-2.0-flash-lite"
+    EMBEDDING_MODEL = "gemini-embedding-001"
+    EMBEDDING_DIM = 768
+    
     _instance: Optional["GeminiService"] = None
+    _global_lock = threading.Lock()  # Ensure only one thread calls Gemini at a time (Free Tier Optimization)
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or Config.LLM_API_KEY
@@ -120,7 +123,7 @@ class GeminiService:
         system_prompt: str = "",
         json_mode: bool = False,
         temperature: float = 0.7,
-        max_retries: int = 1,
+        max_retries: int = 5,
         simulation_id: Optional[str] = None,
         use_cache: bool = True,
     ) -> str:
@@ -147,57 +150,58 @@ class GeminiService:
         )
 
         last_error = None
-        delay = 2.0
+        base_delay = 4.0  # Increased base delay for Free Tier
 
         for attempt in range(max_retries):
-            use_model = self.PRIMARY_MODEL if attempt < 2 else self.FALLBACK_MODEL
-            if attempt == 2:
-                logger.warning("Falling back to %s", self.FALLBACK_MODEL)
+            # Use global lock to prevent parallel hits to the API
+            with self._global_lock:
+                use_model = self.PRIMARY_MODEL if attempt < 2 else self.FALLBACK_MODEL
+                if attempt == 2:
+                    logger.warning("Falling back to %s", self.FALLBACK_MODEL)
 
-            try:
-                response = self._client.models.generate_content(
-                    model=use_model,
-                    contents=prompt,
-                    config=config,
-                )
-                text = _strip_think_tags(response.text)
-                self.increment_count(simulation_id)
-                if use_cache:
-                    _cache_set(cache_key, text)
-                logger.debug(
-                    "Gemini call #%d (sim=%s): %d chars",
-                    self.get_call_count(simulation_id),
-                    simulation_id,
-                    len(text),
-                )
-                return text
+                try:
+                    response = self._client.models.generate_content(
+                        model=use_model,
+                        contents=prompt,
+                        config=config,
+                    )
+                    text = _strip_think_tags(response.text)
+                    self.increment_count(simulation_id)
+                    if use_cache:
+                        _cache_set(cache_key, text)
+                    logger.debug(
+                        "Gemini call #%d (sim=%s): %d chars",
+                        self.get_call_count(simulation_id),
+                        simulation_id,
+                        len(text),
+                    )
+                    # Strictly respect the 15 RPM limit (1 req / 4s)
+                    # We sleep 4.5s to be safe and account for network jitter
+                    time.sleep(4.5) 
+                    return text
 
-            except genai_errors.ClientError as e:
-                status_code = getattr(e, 'status_code', 0) or 0
-                is_rate_limit = status_code == 429 or '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e)
-                is_not_found = status_code == 404 or '404' in str(e)
-                
-                if is_not_found:
-                    # Model not found even as fallback — raise immediately
-                    raise
-                elif is_rate_limit:
+                except genai_errors.ClientError as e:
+                    status_code = getattr(e, 'status_code', 0) or 0
+                    is_rate_limit = status_code == 429 or '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e)
+                    is_not_found = status_code == 404 or '404' in str(e)
+                    
+                    if is_not_found:
+                        raise
+                    
                     last_error = e
-                    logger.warning("Rate limit hit (attempt %d/%d), waiting %.1fs", attempt + 1, max_retries, delay)
-                    time.sleep(delay)
-                    delay *= 2
-                else:
+                    if is_rate_limit:
+                        # Random jitter to prevent synchronized retries
+                        delay = base_delay * (2 ** attempt) + random.uniform(1.0, 5.0)
+                        logger.warning("Rate limit hit (attempt %d/%d), waiting %.1fs", attempt + 1, max_retries, delay)
+                        time.sleep(delay)
+                    else:
+                        logger.error("Gemini error (attempt %d): %s", attempt + 1, str(e)[:120])
+                        time.sleep(base_delay)
+
+                except Exception as e:
                     last_error = e
                     logger.error("Gemini error (attempt %d): %s", attempt + 1, str(e)[:120])
-                    if attempt < max_retries - 1:
-                        time.sleep(delay)
-                        delay *= 2
-
-            except Exception as e:
-                last_error = e
-                logger.error("Gemini error (attempt %d): %s", attempt + 1, str(e)[:120])
-                if attempt < max_retries - 1:
-                    time.sleep(delay)
-                    delay *= 2
+                    time.sleep(base_delay)
 
         raise last_error or RuntimeError("Gemini generate failed after retries")
 

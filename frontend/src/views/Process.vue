@@ -435,6 +435,7 @@ const ontologyProgress = ref(null) // 本体生成进度
 const currentPhase = ref(-1) // -1: 上传中, 0: 本体生成中, 1: 图谱构建, 2: 完成
 const selectedItem = ref(null) // 选中的节点或边
 const isFullScreen = ref(false)
+const isInitializing = ref(false)
 
 // DOM引用
 const graphContainer = ref(null)
@@ -552,6 +553,9 @@ const getPhaseStatusText = (phase) => {
 
 // 初始化 - 处理新建项目或加载已有项目
 const initProject = async () => {
+  if (isInitializing.value) return
+  isInitializing.value = true
+  
   const paramProjectId = route.params.projectId
   
   if (paramProjectId === 'new') {
@@ -571,6 +575,7 @@ const handleNewProject = async () => {
   if (!pending.isPending || pending.files.length === 0) {
     error.value = '没有待上传的文件，请返回首页重新操作'
     loading.value = false
+    isInitializing.value = false
     return
   }
   
