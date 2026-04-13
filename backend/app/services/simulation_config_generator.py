@@ -82,14 +82,14 @@ class AgentActivityConfig:
 class TimeSimulationConfig:
     """时间模拟配置（基于中国人作息习惯）"""
     # 模拟总时长（模拟小时数）
-    total_simulation_hours: int = 72  # 默认模拟72小时（3天）
+    total_simulation_hours: int = 6  # 默认模拟6小时 (Gemini Free Tier 优化)
     
     # 每轮代表的时间（模拟分钟）- 默认60分钟（1小时），加快时间流速
     minutes_per_round: int = 60
     
     # 每小时激活的Agent数量范围
-    agents_per_hour_min: int = 5
-    agents_per_hour_max: int = 20
+    agents_per_hour_min: int = 1
+    agents_per_hour_max: int = 3
     
     # 高峰时段（晚间19-22点，中国人最活跃的时间）
     peak_hours: List[int] = field(default_factory=lambda: [19, 20, 21, 22])
@@ -517,10 +517,10 @@ class SimulationConfigGenerator:
 
 示例：
 {{
-    "total_simulation_hours": 72,
+    "total_simulation_hours": 6,
     "minutes_per_round": 60,
-    "agents_per_hour_min": 5,
-    "agents_per_hour_max": 50,
+    "agents_per_hour_min": 1,
+    "agents_per_hour_max": 3,
     "peak_hours": [19, 20, 21, 22],
     "off_peak_hours": [0, 1, 2, 3, 4, 5],
     "morning_hours": [6, 7, 8],
@@ -529,10 +529,10 @@ class SimulationConfigGenerator:
 }}
 
 字段说明：
-- total_simulation_hours (int): 模拟总时长，24-168小时，突发事件短、持续话题长
+- total_simulation_hours (int): 模拟总时长，建议4-6小时以节省API限额
 - minutes_per_round (int): 每轮时长，30-120分钟，建议60分钟
-- agents_per_hour_min (int): 每小时最少激活Agent数（取值范围: 1-{max_agents_allowed}）
-- agents_per_hour_max (int): 每小时最多激活Agent数（取值范围: 1-{max_agents_allowed}）
+- agents_per_hour_min (int): 每小时最少激活Agent数（建议1-2）
+- agents_per_hour_max (int): 每小时最多激活Agent数（建议3-5）
 - peak_hours (int数组): 高峰时段，根据事件参与群体调整
 - off_peak_hours (int数组): 低谷时段，通常深夜凌晨
 - morning_hours (int数组): 早间时段
@@ -550,10 +550,10 @@ class SimulationConfigGenerator:
     def _get_default_time_config(self, num_entities: int) -> Dict[str, Any]:
         """获取默认时间配置（中国人作息）"""
         return {
-            "total_simulation_hours": 72,
+            "total_simulation_hours": 6,
             "minutes_per_round": 60,  # 每轮1小时，加快时间流速
-            "agents_per_hour_min": max(1, num_entities // 15),
-            "agents_per_hour_max": max(5, num_entities // 5),
+            "agents_per_hour_min": 1,
+            "agents_per_hour_max": 3,
             "peak_hours": [19, 20, 21, 22],
             "off_peak_hours": [0, 1, 2, 3, 4, 5],
             "morning_hours": [6, 7, 8],
