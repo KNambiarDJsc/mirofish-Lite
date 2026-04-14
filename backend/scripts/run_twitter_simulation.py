@@ -432,19 +432,28 @@ class TwitterSimulationRunner:
         """
         gemini_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         openai_key = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        groq_key = os.environ.get("GROQ_API_KEY")
         
-        llm_api_key = openai_key or gemini_key
+        llm_api_key = groq_key or openai_key or gemini_key
         llm_base_url = os.environ.get("LLM_BASE_URL", "")
         llm_model = os.environ.get("LLM_MODEL_NAME", "")
         
         # 备用模型名
         if not llm_model:
-            llm_model = self.config.get("llm_model", "gemini-2.0-flash")
+            if groq_key:
+                llm_model = "llama-3.3-70b-versatile"
+            else:
+                llm_model = self.config.get("llm_model", "gemini-2.0-flash")
         
         # 自动识别平台
-        is_gemini = "gemini" in llm_model.lower() or (not openai_key and gemini_key)
+        is_groq = "llama" in llm_model.lower() or "mixtral" in llm_model.lower() or (groq_key and "gemini" not in llm_model.lower())
+        is_gemini = not is_groq and ("gemini" in llm_model.lower() or (not openai_key and not groq_key and gemini_key))
         
-        if is_gemini:
+        if is_groq:
+            platform = ModelPlatformType.GROQ
+            os.environ["GROQ_API_KEY"] = llm_api_key or groq_key or ""
+            platform_label = "GROQ"
+        elif is_gemini:
             platform = ModelPlatformType.GEMINI
             os.environ["GEMINI_API_KEY"] = llm_api_key or gemini_key or ""
             os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
@@ -457,7 +466,7 @@ class TwitterSimulationRunner:
             platform_label = "OPENAI"
         
         if not llm_api_key:
-            raise ValueError(f"缺少 API Key 配置，请在 .env 中设置 LLM_API_KEY 或 GEMINI_API_KEY")
+            raise ValueError(f"缺少 API Key 配置，请在 .env 中设置 GROQ_API_KEY, LLM_API_KEY 或 GEMINI_API_KEY")
         
         print(f"LLM配置: 平台={platform_label}, model={llm_model}, base_url={llm_base_url[:40] if llm_base_url else '默认'}...")
         
