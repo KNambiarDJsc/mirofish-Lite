@@ -3,45 +3,35 @@
 </template>
 
 <script setup>
-// 使用 Vue Router 来管理页面
 </script>
 
 <style>
-/* 全局样式重置 */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-#app {
-  font-family: 'JetBrains Mono', 'Space Grotesk', 'Noto Sans SC', monospace;
+html, body, #app {
+  height: 100%;
+  background: #0A0A0A;
+  color: #FFFFFF;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color: #000000;
-  background-color: #ffffff;
 }
 
-/* 滚动条样式 */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #0A0A0A; }
+::-webkit-scrollbar-thumb { background: #1E1E1E; border-radius: 0; }
 
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
+button { font-family: inherit; }
 
-::-webkit-scrollbar-thumb {
-  background: #000000;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #333333;
-}
-
-/* 全局按钮样式 */
-button {
+input, textarea, select {
   font-family: inherit;
+  color-scheme: dark;
 }
+
+a { color: inherit; text-decoration: none; }
 </style>
