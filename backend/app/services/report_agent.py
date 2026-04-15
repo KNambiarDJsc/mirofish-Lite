@@ -2673,7 +2673,7 @@ class ReportManager:
         """
         
         try:
-            llm = LLMClient()
+            llm = LLMClient(report=True)  # Report always uses Gemini regardless of provider
             response = llm.chat(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3

@@ -1,11 +1,12 @@
 """
-AXonic — MVP API Blueprint
-Two core endpoints + one purchase endpoint.
+AXonic Lite — MVP API
+Engine: Llama 3.3 70B (Groq) → events  |  Gemini 2.5 Flash → report
+No rule-based fallback. No OASIS. If LLM fails, return a clean error.
 
-POST /api/mvp/simulate  → Generate events (Llama) or fallback (rule-based)
-POST /api/mvp/report    → Generate intelligence report (Gemini 2.5 Flash)
-POST /api/mvp/purchase  → Credit user account after Razorpay payment
-GET  /api/mvp/balance   → Return current CU balance for a user
+POST /api/mvp/simulate  → Llama 3.3 70B generates real campaign events
+POST /api/mvp/report    → Gemini 2.5 Flash generates decision report
+POST /api/mvp/purchase  → Credit user after Razorpay payment
+GET  /api/mvp/balance   → Current CU balance
 """
 
 import uuid
@@ -13,9 +14,8 @@ import logging
 
 from flask import Blueprint, request, jsonify
 
-from ..services.llm_router        import generate_events, generate_report
-from ..services.campaign_simulator import simulate as rule_simulate
-from ..services.compute_tracker   import (
+from ..services.llm_router   import generate_events, generate_report
+from ..services.compute_tracker import (
     can_afford,
     deduct_and_log,
     add_compute_units,
@@ -25,82 +25,101 @@ from ..services.compute_tracker   import (
     CU_RATES,
 )
 
-logger   = logging.getLogger("axonic.api.mvp")
-mvp_bp   = Blueprint("mvp", __name__)
+logger = logging.getLogger("axonic.api.mvp")
+mvp_bp = Blueprint("mvp", __name__)
 
-# ── /simulate ─────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/mvp/simulate
+# Llama 3.3 70B generates authentic campaign simulation events.
+# ─────────────────────────────────────────────────────────────────────────────
 
 @mvp_bp.post("/simulate")
 def simulate_campaign():
-    """
-    Generate simulation events for a campaign.
-    Tries Llama 3.3 70B first; falls back to rule-based simulator on failure.
-    Does NOT deduct credits — credit is only deducted on /report.
-    """
     data     = request.get_json(silent=True) or {}
     user_id  = data.get("user_id")
     campaign = data.get("campaign")
 
     if not user_id or not campaign:
-        return jsonify({"success": False, "error": "user_id and campaign are required"}), 400
+        return jsonify({
+            "success": False,
+            "error":   "user_id and campaign are required",
+        }), 400
 
-    # Check user has enough CU for the upcoming full flow (events + report)
+    # Check minimum CU balance for full run (events + report)
     min_required = CU_RATES["event_gen_llama"] + CU_RATES["report_flash"]
-    if get_available_cu(user_id) < min_required:
+    cu_now = get_available_cu(user_id)
+    if cu_now < min_required:
         return jsonify({
             "success":         False,
             "error":           "NO_CREDITS",
-            "message":         "You need at least 0.5 credits to run a simulation.",
+            "message":         f"You need at least {min_required} CU (0.5 credits) to run a simulation.",
+            "cu_available":    cu_now,
             "credits_display": get_credits_display(user_id),
         }), 402
 
-    # Generate events
+    sim_id = data.get("simulation_id") or str(uuid.uuid4())
+
+    # ── Llama 3.3 70B — real simulation, no fallback ──────────────────────────
     try:
         events, usage = generate_events(campaign)
-        source = "llm"
     except Exception as exc:
-        logger.warning(f"[LLM] Event generation failed ({exc}), using rule-based fallback.")
-        events = rule_simulate(campaign)
-        usage  = {"model": "rule-based", "provider": "local", "tokens_in": 0, "tokens_out": 0}
-        source = "rules"
+        logger.error(f"[Llama] Event generation failed: {exc}")
+        return jsonify({
+            "success": False,
+            "error":   "SIMULATION_FAILED",
+            "message": "Llama simulation engine returned an error. Please retry.",
+            "detail":  str(exc),
+        }), 500
 
-    # Deduct CU for event generation
-    deduct_result = deduct_and_log(
+    # Deduct CU for event generation only after success
+    deduct = deduct_and_log(
         user_id       = user_id,
-        simulation_id = data.get("simulation_id", str(uuid.uuid4())),
+        simulation_id = sim_id,
         action        = "event_gen_llama",
-        model         = usage.get("model", "rule-based"),
+        model         = usage.get("model", GROQ_MODEL_LABEL),
         tokens_in     = usage.get("tokens_in", 0),
         tokens_out    = usage.get("tokens_out", 0),
     )
 
     return jsonify({
         "success":         True,
+        "simulation_id":   sim_id,
         "events":          events,
-        "source":          source,
-        "cu_remaining":    deduct_result.get("cu_remaining", 0),
-        "credits_display": deduct_result.get("credits_display", 0),
+        "engine":          "llama-3.3-70b",
+        "tokens_in":       usage.get("tokens_in"),
+        "tokens_out":      usage.get("tokens_out"),
+        "cu_remaining":    deduct.get("cu_remaining", 0),
+        "credits_display": deduct.get("credits_display", 0),
     })
 
 
-# ── /report ───────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/mvp/report
+# Gemini 2.5 Flash generates the executive decision report.
+# ─────────────────────────────────────────────────────────────────────────────
 
 @mvp_bp.post("/report")
 def generate_campaign_report():
-    """
-    Generate the AXonic intelligence report from events.
-    Deducts CU based on user tier (free → flash, paid → pro pricing).
-    """
     data          = request.get_json(silent=True) or {}
     user_id       = data.get("user_id")
     campaign      = data.get("campaign")
     events        = data.get("events", [])
-    simulation_id = data.get("simulation_id", str(uuid.uuid4()))
+    simulation_id = data.get("simulation_id") or str(uuid.uuid4())
 
     if not user_id or not campaign:
-        return jsonify({"success": False, "error": "user_id and campaign are required"}), 400
+        return jsonify({
+            "success": False,
+            "error":   "user_id and campaign are required",
+        }), 400
 
-    # Determine action based on tier
+    if not events:
+        return jsonify({
+            "success": False,
+            "error":   "No simulation events provided. Run /simulate first.",
+        }), 400
+
+    # Tier determines token budget (free = 1200 tokens, paid = 2500)
     tier   = get_user_tier(user_id)
     action = "report_pro" if tier == "paid" else "report_flash"
 
@@ -112,19 +131,24 @@ def generate_campaign_report():
             "credits_display": get_credits_display(user_id),
         }), 402
 
-    # Generate report
+    # ── Gemini 2.5 Flash — real report, no fallback ───────────────────────────
     try:
         report, usage = generate_report(campaign, events, tier)
     except Exception as exc:
         logger.error(f"[Gemini] Report generation failed: {exc}")
-        return jsonify({"success": False, "error": "REPORT_FAILED", "detail": str(exc)}), 500
+        return jsonify({
+            "success": False,
+            "error":   "REPORT_FAILED",
+            "message": "Gemini report engine returned an error. Please retry.",
+            "detail":  str(exc),
+        }), 500
 
-    # Deduct CU
-    deduct_result = deduct_and_log(
+    # Deduct CU after successful report generation
+    deduct = deduct_and_log(
         user_id       = user_id,
         simulation_id = simulation_id,
         action        = action,
-        model         = usage.get("model", "gemini"),
+        model         = usage.get("model"),
         tokens_in     = usage.get("tokens_in", 0),
         tokens_out    = usage.get("tokens_out", 0),
     )
@@ -132,28 +156,31 @@ def generate_campaign_report():
     return jsonify({
         "success":         True,
         "report":          report,
-        "tier_used":       tier,
-        "model_used":      usage.get("model"),
-        "cu_remaining":    deduct_result.get("cu_remaining", 0),
-        "credits_display": deduct_result.get("credits_display", 0),
+        "tier":            tier,
+        "engine":          "gemini-2.5-flash",
+        "tokens_in":       usage.get("tokens_in"),
+        "tokens_out":      usage.get("tokens_out"),
+        "cu_remaining":    deduct.get("cu_remaining", 0),
+        "credits_display": deduct.get("credits_display", 0),
     })
 
 
-# ── /purchase ─────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/mvp/purchase  — credit user after Razorpay payment
+# ─────────────────────────────────────────────────────────────────────────────
 
 @mvp_bp.post("/purchase")
 def purchase_credits():
-    """
-    Called by frontend after a successful Razorpay payment.
-    Adds CU to user account based on pack.
-    """
     data       = request.get_json(silent=True) or {}
     user_id    = data.get("user_id")
     pack       = data.get("pack")        # 'starter' | 'growth'
-    payment_id = data.get("payment_id")  # Razorpay payment ID
+    payment_id = data.get("payment_id")  # Razorpay payment_id
 
     if not user_id or not pack or not payment_id:
-        return jsonify({"success": False, "error": "user_id, pack, payment_id required"}), 400
+        return jsonify({
+            "success": False,
+            "error":   "user_id, pack, and payment_id are all required",
+        }), 400
 
     result = add_compute_units(user_id, pack, payment_id)
 
@@ -163,27 +190,41 @@ def purchase_credits():
     return jsonify({
         "success":  True,
         "pack":     pack,
+        "cu_added": result["cu_added"],
         "credits":  result["credits"],
         "cu_total": result["cu_total"],
-        "message":  f"Successfully added {result['cu_added']} CU ({result['credits']} credits).",
+        "message":  f"Added {result['cu_added']} CU → {result['credits']} credits total.",
     })
 
 
-# ── /balance ──────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/mvp/balance  — credit balance for the user
+# ─────────────────────────────────────────────────────────────────────────────
 
 @mvp_bp.get("/balance")
 def get_balance():
-    """Return current CU balance and credit display for a user."""
     user_id = request.args.get("user_id")
     if not user_id:
         return jsonify({"success": False, "error": "user_id is required"}), 400
 
-    cu      = get_available_cu(user_id)
-    tier    = get_user_tier(user_id)
+    cu   = get_available_cu(user_id)
+    tier = get_user_tier(user_id)
 
     return jsonify({
         "success":         True,
         "compute_units":   cu,
         "credits_display": round(cu / 100, 1),
         "tier":            tier,
+        "cu_rates": {
+            "simulate": CU_RATES["event_gen_llama"],
+            "report":   CU_RATES["report_flash"],
+            "per_run":  CU_RATES["event_gen_llama"] + CU_RATES["report_flash"],
+        },
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Internal label for logs (not imported from env at module level)
+# ─────────────────────────────────────────────────────────────────────────────
+import os
+GROQ_MODEL_LABEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
