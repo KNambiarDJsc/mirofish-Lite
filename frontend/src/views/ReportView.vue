@@ -47,31 +47,23 @@
         </div>
       </section>
 
-      <!-- ── CAMPAIGN META ──────────────────────────────────── -->
+      <!-- ── STRATEGY META ──────────────────────────────────── -->
       <section class="meta-bar">
         <div class="meta-pill" v-if="result.campaign">
-          <span class="mp-key">CAMPAIGN</span>
+          <span class="mp-key">STRATEGY</span>
           <span class="mp-val">{{ result.campaign.name }}</span>
         </div>
-        <div class="meta-pill" v-if="result.campaign">
-          <span class="mp-key">PLATFORM</span>
-          <span class="mp-val">{{ result.campaign.platform }}</span>
-        </div>
-        <div class="meta-pill" v-if="result.campaign">
-          <span class="mp-key">TONE</span>
-          <span class="mp-val">{{ result.campaign.tone }}</span>
-        </div>
-        <div class="meta-pill" v-if="result.campaign">
-          <span class="mp-key">AUDIENCE</span>
-          <span class="mp-val">{{ result.campaign.audience }}</span>
+        <div class="meta-pill" v-if="result.campaign?.strategy_docs">
+          <span class="mp-key">DOCS</span>
+          <span class="mp-val">Context Provided</span>
         </div>
         <div class="meta-pill">
-          <span class="mp-key">MODEL</span>
-          <span class="mp-val">{{ result.model || 'Gemini 2.5 Flash' }}</span>
+          <span class="mp-key">MARKET</span>
+          <span class="mp-val">India (Unified)</span>
         </div>
         <div class="meta-pill">
-          <span class="mp-key">TIER</span>
-          <span class="mp-val">{{ result.tier || 'FREE' }}</span>
+          <span class="mp-key">REGION</span>
+          <span class="mp-val">India</span>
         </div>
       </section>
 

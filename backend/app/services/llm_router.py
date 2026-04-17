@@ -55,10 +55,29 @@ def _build_event_prompt(campaign: dict) -> str:
     audience    = campaign.get("audience", "Indian consumers")
     tone        = campaign.get("tone", "Inspirational")
     goal        = campaign.get("goal", "brand awareness")
+    
+    # New simplified fields
+    strategy_prompt = campaign.get("prompt", "")
+    strategy_docs   = campaign.get("strategy_docs", "")
+
+    campaign_context = ""
+    if strategy_prompt:
+        campaign_context = f"Strategy Prompt: {strategy_prompt}\n"
+        if strategy_docs:
+            campaign_context += f"Strategy Documents: {strategy_docs}\n"
+    else:
+        campaign_context = f"""
+  Name        : {name}
+  Description : {description}
+  Platform    : {platform}
+  Audience    : {audience}
+  Tone        : {tone}
+  Goal        : {goal}
+"""
 
     return f"""You are a senior marketing simulation analyst who specialises in the Indian digital market.
 
-Simulate how this campaign will realistically unfold over 3 rounds.
+Simulate how this campaign or marketing strategy will realistically unfold over 3 rounds.
 Think authentically about Indian consumer behaviour:
 - Regional language reactions (Hindi belt vs South India)
 - Price sensitivity and value-for-money expectations
@@ -68,13 +87,8 @@ Think authentically about Indian consumer behaviour:
 - Tier 1 / Tier 2 / Tier 3 city dynamics
 - UPI payment readiness and impulse-buy patterns
 
-Campaign Details:
-  Name        : {name}
-  Description : {description}
-  Platform    : {platform}
-  Audience    : {audience}
-  Tone        : {tone}
-  Goal        : {goal}
+Campaign/Strategy Details:
+{campaign_context}
 
 Generate exactly 3 simulation rounds:
   Round 1 — Launch        (first 24 hours)
@@ -102,6 +116,25 @@ def _build_report_prompt(campaign: dict, events: list, is_paid: bool) -> str:
     audience    = campaign.get("audience", "Indian consumers")
     tone        = campaign.get("tone", "Inspirational")
     goal        = campaign.get("goal", "brand awareness")
+
+    # New simplified fields
+    strategy_prompt = campaign.get("prompt", "")
+    strategy_docs   = campaign.get("strategy_docs", "")
+
+    campaign_context = ""
+    if strategy_prompt:
+        campaign_context = f"Strategy Prompt: {strategy_prompt}\n"
+        if strategy_docs:
+            campaign_context += f"Strategy Documents: {strategy_docs}\n"
+    else:
+        campaign_context = f"""
+  Name        : {name}
+  Description : {description}
+  Platform    : {platform}
+  Audience    : {audience}
+  Tone        : {tone}
+  Goal        : {goal}
+"""
 
     events_text = "\n".join(
         f"  Round {e.get('round', i + 1)}: {e.get('event', '')} "
@@ -131,13 +164,8 @@ def _build_report_prompt(campaign: dict, events: list, is_paid: bool) -> str:
 
     return f"""You are AXonic Intelligence — an elite marketing analyst for the Indian market. {tier_note}
 
-Campaign:
-  Name        : {name}
-  Description : {description}
-  Platform    : {platform}
-  Audience    : {audience}
-  Tone        : {tone}
-  Goal        : {goal}
+Campaign/Strategy:
+{campaign_context}
 
 Simulation Results:
 {events_text}

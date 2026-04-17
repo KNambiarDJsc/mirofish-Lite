@@ -44,11 +44,10 @@
 
         <!-- Campaign summary -->
         <div class="campaign-summary" v-if="campaign">
-          <div class="cs-header">// CAMPAIGN</div>
-          <div class="cs-row"><span class="cs-key">NAME</span><span class="cs-val">{{ campaign.name }}</span></div>
-          <div class="cs-row"><span class="cs-key">PLATFORM</span><span class="cs-val">{{ campaign.platform }}</span></div>
-          <div class="cs-row"><span class="cs-key">TONE</span><span class="cs-val">{{ campaign.tone }}</span></div>
-          <div class="cs-row"><span class="cs-key">GOAL</span><span class="cs-val">{{ campaign.goal }}</span></div>
+          <div class="cs-header">// STRATEGY CONTEXT</div>
+          <div class="cs-row"><span class="cs-key">PROMPT</span><span class="cs-val">{{ campaign.name }}</span></div>
+          <div class="cs-row" v-if="campaign.strategy_docs"><span class="cs-key">DOCS</span><span class="cs-val">Attached ({{ campaign.strategy_docs.length }} chars)</span></div>
+          <div class="cs-row"><span class="cs-key">MARKET</span><span class="cs-val">India (Unified)</span></div>
         </div>
       </aside>
 
@@ -254,8 +253,8 @@ const runFlow = async () => {
   completeStep(2, '1.4s')
 
   // Step 4: Simulation
-  activateStep(3, 'Running Llama 3.3 70B simulation...')
-  setLog('Calling simulation engine — Llama 3.3 70B via Groq...')
+  activateStep(3, 'Running strategy simulation engine...')
+  setLog('Calling intelligence layer...')
 
   let simEvents = []
   try {

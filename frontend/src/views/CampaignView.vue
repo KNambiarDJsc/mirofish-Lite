@@ -17,34 +17,16 @@
 
       <!-- LEFT: Context -->
       <aside class="ax-sidebar">
-        <div class="sidebar-tag">DECISION ENGINE v1.0</div>
-        <h1 class="sidebar-headline">Will this<br>campaign<br><span class="headline-red">work?</span></h1>
+        <div class="sidebar-tag">DECISION ENGINE v1.1</div>
+        <h1 class="sidebar-headline">Simulate<br>your<br><span class="headline-red">strategy.</span></h1>
         <p class="sidebar-sub">
-          Define your campaign. AXonic simulates how the Indian market
-          will react — before you spend a single rupee.
+          Stop guessing. Paste your strategy documents and run a simulation 
+          to see how the Indian market will realistically react.
         </p>
 
-        <div class="sidebar-metrics">
-          <div class="sm-row">
-            <span class="sm-key">Models</span>
-            <span class="sm-val">Llama 3.3 · Gemini 2.5</span>
-          </div>
-          <div class="sm-row">
-            <span class="sm-key">Market</span>
-            <span class="sm-val">India — Tier 1 / 2 / 3</span>
-          </div>
-          <div class="sm-row">
-            <span class="sm-key">Output</span>
-            <span class="sm-val">Executive Brief</span>
-          </div>
-          <div class="sm-row">
-            <span class="sm-key">Cost</span>
-            <span class="sm-val">0.5 credits / run</span>
-          </div>
-        </div>
 
         <div class="step-track">
-          <div class="st-item active"><span class="st-n">01</span><span class="st-label">Campaign Definition</span></div>
+          <div class="st-item active"><span class="st-n">01</span><span class="st-label">Strategy Definition</span></div>
           <div class="st-item"><span class="st-n">02</span><span class="st-label">Simulation</span></div>
           <div class="st-item"><span class="st-n">03</span><span class="st-label">Decision Report</span></div>
         </div>
@@ -53,109 +35,66 @@
       <!-- RIGHT: Form -->
       <section class="ax-form-panel">
         <div class="form-header">
-          <span class="form-tag">// CAMPAIGN DEFINITION</span>
+          <span class="form-tag">// STRATEGY SIMULATION</span>
           <span class="form-step">STEP 01 / 03</span>
         </div>
 
         <form @submit.prevent="launch" class="ax-form">
 
-          <!-- Campaign Name -->
+          <!-- Upload Strategy Section -->
           <div class="field-block">
-            <label class="field-label">CAMPAIGN NAME <span class="req">*</span></label>
-            <input
-              v-model="form.name"
-              class="ax-input"
-              placeholder="e.g. Diwali Collection 2026"
-              maxlength="80"
-              required
-            />
+            <label class="field-label">
+              STRATEGY DOCUMENTS / CONTEXT
+              <span class="label-opt">(PDF, TXT, MD)</span>
+            </label>
+            
+            <div 
+              class="upload-zone"
+              :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
+              @dragover.prevent="isDragOver = true"
+              @dragleave.prevent="isDragOver = false"
+              @drop.prevent="handleDrop"
+              @click="triggerFile"
+            >
+              <input 
+                ref="fileInput"
+                type="file" 
+                multiple 
+                accept=".pdf,.txt,.md" 
+                class="hidden-input"
+                @change="handleSelect"
+              />
+              
+              <div v-if="files.length === 0" class="upload-inner">
+                <div class="upload-icon">↑</div>
+                <div class="upload-text">Drag & Drop strategy files here</div>
+                <div class="upload-sub">or click to browse from local storage</div>
+              </div>
+              
+              <div v-else class="file-list">
+                <div v-for="(f, i) in files" :key="i" class="file-item">
+                  <span class="file-icon">📄</span>
+                  <span class="file-name">{{ f.name }}</span>
+                  <span class="file-size">{{ (f.size / 1024).toFixed(1) }} KB</span>
+                  <button type="button" class="remove-file" @click.stop="removeFile(i)">×</button>
+                </div>
+                <div class="add-more">+ Add more documents</div>
+              </div>
+            </div>
+            <div class="field-hint">Upload brand guidelines, product details, or research to ground the model.</div>
           </div>
 
-          <!-- Description -->
+          <!-- Simulation Prompt -->
           <div class="field-block">
-            <label class="field-label">CAMPAIGN BRIEF <span class="req">*</span></label>
+            <label class="field-label">SIMULATION PROMPT <span class="req">*</span></label>
             <textarea
-              v-model="form.description"
+              v-model="form.prompt"
               class="ax-input ax-textarea"
-              placeholder="What is this campaign about? What message are you sending? (2-3 sentences)"
-              rows="3"
+              placeholder="What do you want to test? e.g. 'Launch of a premium organic tea brand targeting Gen Z in Bangalore via Instagram Reels with a humorous tone.'"
+              rows="4"
               required
             ></textarea>
-          </div>
-
-          <!-- Row: Platform + Tone -->
-          <div class="field-row">
-            <div class="field-block">
-              <label class="field-label">PLATFORM <span class="req">*</span></label>
-              <div class="ax-select-wrap">
-                <select v-model="form.platform" class="ax-select" required>
-                  <option value="">Select platform</option>
-                  <option value="Instagram">Instagram</option>
-                  <option value="Twitter">Twitter / X</option>
-                  <option value="YouTube">YouTube</option>
-                  <option value="LinkedIn">LinkedIn</option>
-                  <option value="WhatsApp">WhatsApp</option>
-                </select>
-                <span class="select-arrow">▾</span>
-              </div>
-            </div>
-
-            <div class="field-block">
-              <label class="field-label">CAMPAIGN TONE <span class="req">*</span></label>
-              <div class="ax-select-wrap">
-                <select v-model="form.tone" class="ax-select" required>
-                  <option value="">Select tone</option>
-                  <option value="Inspirational">Inspirational</option>
-                  <option value="Emotional">Emotional</option>
-                  <option value="Informational">Informational</option>
-                  <option value="Humorous">Humorous</option>
-                  <option value="Aggressive">Aggressive / Direct</option>
-                </select>
-                <span class="select-arrow">▾</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Audience -->
-          <div class="field-block">
-            <label class="field-label">TARGET AUDIENCE <span class="req">*</span></label>
-            <input
-              v-model="form.audience"
-              class="ax-input"
-              placeholder="e.g. Urban women 22–35, Tier 1 cities, SEC A-B"
-              required
-            />
-            <div class="field-hint">Be specific. The more precise, the more accurate the simulation.</div>
-          </div>
-
-          <!-- Goal -->
-          <div class="field-block">
-            <label class="field-label">PRIMARY GOAL</label>
-            <div class="goal-chips">
-              <button
-                v-for="g in goals"
-                :key="g"
-                type="button"
-                class="goal-chip"
-                :class="{ active: form.goal === g }"
-                @click="form.goal = g"
-              >{{ g }}</button>
-            </div>
-          </div>
-
-          <!-- Budget Context -->
-          <div class="field-block">
-            <label class="field-label">BUDGET RANGE (OPTIONAL)</label>
-            <div class="ax-select-wrap">
-              <select v-model="form.budget" class="ax-select">
-                <option value="">Not specified</option>
-                <option value="Under ₹50K">Under ₹50,000</option>
-                <option value="₹50K–₹2L">₹50,000 – ₹2,00,000</option>
-                <option value="₹2L–₹10L">₹2,00,000 – ₹10,00,000</option>
-                <option value="₹10L+">₹10,00,000+</option>
-              </select>
-              <span class="select-arrow">▾</span>
-            </div>
+            <div class="field-hint">Describe the specific campaign or move you want to simulate.</div>
           </div>
 
           <!-- Error -->
@@ -179,9 +118,6 @@
             </span>
           </button>
 
-          <div class="launch-meta">
-            Uses 0.5 credits · {{ creditsDisplay }} credits remaining
-          </div>
 
         </form>
       </section>
@@ -196,32 +132,61 @@ import { useRouter } from 'vue-router'
 import { saveCampaign, getBalance, getUserId } from '../api/mvp.js'
 
 const router = useRouter()
+const fileInput = ref(null)
+const isDragOver = ref(false)
+const files = ref([])
 
 const form = ref({
-  name:        '',
-  description: '',
-  platform:    '',
-  tone:        '',
-  audience:    '',
-  goal:        'Brand Awareness',
-  budget:      '',
+  prompt:        '',
 })
 
-const goals      = ['Brand Awareness', 'Lead Generation', 'Sales / Conversions', 'App Downloads', 'Community Growth']
 const submitting = ref(false)
 const error      = ref('')
 const creditsDisplay = ref('—')
 
 const canSubmit = computed(() =>
-  form.value.name.trim() &&
-  form.value.description.trim() &&
-  form.value.platform &&
-  form.value.tone &&
-  form.value.audience.trim()
+  form.value.prompt.trim().length > 10
 )
 
+const triggerFile = () => fileInput.value?.click()
+
+const handleSelect = (e) => {
+  const newFiles = Array.from(e.target.files)
+  addFiles(newFiles)
+}
+
+const handleDrop = (e) => {
+  isDragOver.value = false
+  const newFiles = Array.from(e.dataTransfer.files)
+  addFiles(newFiles)
+}
+
+const addFiles = (newFiles) => {
+  const allowed = ['.pdf', '.txt', '.md']
+  const filtered = newFiles.filter(f => {
+    const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase()
+    return allowed.includes(ext)
+  })
+  files.value.push(...filtered)
+}
+
+const removeFile = (i) => files.value.splice(i, 1)
+
+// Helper to read file as text
+const readFile = (file) => {
+  return new Promise((resolve) => {
+    if (file.type === 'application/pdf') {
+      // Basic placeholder for PDF as we don't have a parser library in browser here
+      resolve(`[FILE: ${file.name} - ${file.size} bytes]`)
+    } else {
+      const reader = new FileReader()
+      reader.onload = (e) => resolve(e.target.result)
+      reader.readAsText(file)
+    }
+  })
+}
+
 onMounted(async () => {
-  // Ensure user ID exists
   getUserId()
   try {
     const res = await getBalance()
@@ -237,7 +202,19 @@ async function launch() {
   submitting.value = true
 
   try {
-    saveCampaign({ ...form.value })
+    // Read all files context
+    const fileContents = await Promise.all(files.value.map(f => readFile(f)))
+    const strategyContext = fileContents.join('\n\n---\n\n')
+
+    const name = form.value.prompt.substring(0, 40) + (form.value.prompt.length > 40 ? '...' : '')
+    saveCampaign({ 
+      ...form.value,
+      name: name,
+      strategy_docs: strategyContext,
+      platform: 'Digital',
+      tone: 'Variable',
+      goal: 'Simulation'
+    })
     router.push({ name: 'Run' })
   } catch (e) {
     error.value = e.message || 'Failed to start. Please try again.'
@@ -372,7 +349,7 @@ async function launch() {
 }
 
 .sidebar-headline {
-  font-size: 3.6rem;
+  font-size: 3.2rem;
   font-weight: 700;
   line-height: 1.05;
   margin: 0;
@@ -481,20 +458,14 @@ async function launch() {
 .ax-form {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  max-width: 640px;
+  gap: 32px;
+  max-width: 680px;
 }
 
 .field-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: 10px;
 }
 
 .field-label {
@@ -502,102 +473,150 @@ async function launch() {
   font-size: 10px;
   letter-spacing: 2px;
   color: #555555;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label-opt {
+  color: #2A2A2A;
+  font-weight: 400;
 }
 
 .req { color: #FF1744; }
+
+/* UPLOAD ZONE */
+.upload-zone {
+  background: #0D0D0D;
+  border: 1px dashed #1E1E1E;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+  position: relative;
+}
+
+.upload-zone:hover {
+  border-color: #FF1744;
+  background: #111111;
+  box-shadow: 0 0 40px rgba(255,23,68,0.03);
+}
+
+.upload-zone.drag-over {
+  border-color: #00E5FF;
+  background: rgba(0, 229, 255, 0.05);
+  transform: scale(1.01);
+}
+
+.hidden-input { display: none; }
+
+.upload-inner {
+  text-align: center;
+}
+
+.upload-icon {
+  font-size: 24px;
+  color: #1E1E1E;
+  margin-bottom: 12px;
+  transition: color 0.2s;
+}
+.upload-zone:hover .upload-icon { color: #FF1744; }
+
+.upload-text {
+  font-size: 14px;
+  color: #888888;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.upload-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #333333;
+  letter-spacing: 0.5px;
+}
+
+.file-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-item {
+  background: #111111;
+  border: 1px solid #1E1E1E;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: slide-in 0.3s ease both;
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.file-icon { font-size: 12px; opacity: 0.5; }
+.file-name { font-size: 13px; color: #CCCCCC; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-size { font-family: var(--font-mono); font-size: 10px; color: #333333; }
+
+.remove-file {
+  background: none;
+  border: none;
+  color: #333333;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.remove-file:hover { color: #FF1744; }
+
+.add-more {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #555555;
+  text-align: center;
+  padding-top: 8px;
+  letter-spacing: 1px;
+}
 
 .ax-input {
   background: #111111;
   border: 1px solid #1E1E1E;
   color: #FFFFFF;
-  padding: 14px 16px;
+  padding: 16px;
   font-family: 'Space Grotesk', system-ui, sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   outline: none;
   border-radius: 0;
-  transition: border-color 0.2s;
+  transition: all 0.2s;
   width: 100%;
   box-sizing: border-box;
+  line-height: 1.6;
 }
 
 .ax-input:focus {
   border-color: #FF1744;
+  background: #141414;
+  box-shadow: 0 0 20px rgba(255,23,68,0.05);
 }
 
 .ax-input::placeholder { color: #333333; }
 
 .ax-textarea {
   resize: vertical;
-  min-height: 80px;
-}
-
-.ax-select-wrap {
-  position: relative;
-}
-
-.ax-select {
-  width: 100%;
-  background: #111111;
-  border: 1px solid #1E1E1E;
-  color: #FFFFFF;
-  padding: 14px 40px 14px 16px;
-  font-family: 'Space Grotesk', system-ui, sans-serif;
-  font-size: 14px;
-  outline: none;
-  border-radius: 0;
-  appearance: none;
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-
-.ax-select:focus { border-color: #FF1744; }
-.ax-select option { background: #111111; }
-
-.select-arrow {
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #444444;
-  pointer-events: none;
-  font-size: 12px;
+  min-height: 120px;
 }
 
 .field-hint {
   font-size: 11px;
   color: #333333;
   font-family: 'JetBrains Mono', monospace;
-}
-
-/* GOAL CHIPS */
-.goal-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.goal-chip {
-  background: transparent;
-  border: 1px solid #1E1E1E;
-  color: #555555;
-  padding: 8px 16px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  letter-spacing: 0.5px;
-  cursor: pointer;
-  border-radius: 0;
-  transition: all 0.15s;
-}
-
-.goal-chip:hover {
-  border-color: #FF1744;
-  color: #FF1744;
-}
-
-.goal-chip.active {
-  background: #FF1744;
-  border-color: #FF1744;
-  color: #FFFFFF;
 }
 
 /* ERROR */
@@ -618,7 +637,7 @@ async function launch() {
   background: #FF1744;
   border: none;
   color: #FFFFFF;
-  padding: 18px 32px;
+  padding: 20px 32px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
   font-weight: 700;
@@ -637,6 +656,7 @@ async function launch() {
 .ax-launch-btn:hover:not(:disabled) {
   background: #FF4569;
   transform: translateY(-1px);
+  box-shadow: 0 10px 30px rgba(255,23,68,0.2);
 }
 
 .ax-launch-btn:disabled {

@@ -128,8 +128,8 @@
             <div class="ps-number">01</div>
             <div class="ps-body">
               <div class="ps-icon">⌨</div>
-              <div class="ps-title">Define Campaign</div>
-              <div class="ps-desc">Input your idea, target audience, platform, and tone. Takes 60 seconds.</div>
+              <div class="ps-title">Define Strategy</div>
+              <div class="ps-desc">Paste your strategy documents and a specific simulation prompt. Takes 60 seconds.</div>
             </div>
             <div class="ps-state" v-if="pipeStep >= 1">
               <span class="pss-dot done"></span> Ready
@@ -321,7 +321,7 @@
           <span class="cta-arrow">→</span>
         </button>
         <div class="cta-meta">
-          3 simulations free · Powered by Llama 3.3 + Gemini 2.5 · Indian market intelligence
+          AXonic Decision Engine · Built for Strategic Excellence
         </div>
       </div>
     </section>
