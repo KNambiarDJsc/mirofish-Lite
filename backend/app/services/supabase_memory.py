@@ -1,7 +1,8 @@
 """
-Supabase Memory Layer — replaces Zep Cloud.
-Provides node/edge storage for knowledge graphs and agent memory retrieval
-using PostgreSQL + pgvector via Supabase.
+Supabase Memory Layer — AXonic
+PostgreSQL + pgvector backed storage for knowledge graph nodes/edges + agent memory.
+Uses RPCs defined in supabase_schema.sql (search_kg_nodes, search_kg_edges_by_keyword,
+search_agent_memory, get_graph_stats) with Python fallbacks for resilience.
 """
 
 import logging
@@ -11,16 +12,13 @@ from typing import Any, Dict, List, Optional
 from ..utils.supabase_client import get_client
 from ..utils.gemini_service import GeminiService
 
-logger = logging.getLogger("mirofish.supabase_memory")
+logger = logging.getLogger("axonic.supabase_memory")
 
 
 class SupabaseMemory:
-    """
-    Memory layer backed by Supabase (PostgreSQL + pgvector).
-    Replaces all Zep-based graph and memory operations.
-    """
+    """Memory layer backed by Supabase (PostgreSQL + pgvector)."""
 
-    # ─── Knowledge Graph: Nodes ───────────────────────────────────────────────
+    # ── Knowledge graph: nodes ────────────────────────────────────────────────
 
     def store_node(self, graph_id: str, node_data: Dict[str, Any]) -> str:
         """Upsert a knowledge graph node. Returns node_uuid."""
@@ -28,7 +26,6 @@ class SupabaseMemory:
         name = node_data.get("name", "")
         summary = node_data.get("summary", "")
 
-        # Generate embedding for semantic search
         embed_text = f"{name} {summary}".strip()
         embedding = GeminiService.get_instance().embed(embed_text) if embed_text else None
 
@@ -81,7 +78,6 @@ class SupabaseMemory:
                 .execute()
             )
             rows = result.data or []
-            # Normalize to expected shape
             return [
                 {
                     "uuid": r["node_uuid"],
@@ -127,13 +123,12 @@ class SupabaseMemory:
             return []
 
     def search_nodes(
-        self, graph_id: str, query: str, top_k: int = 5
+        self, graph_id: str, query: str, top_k: int = 5,
     ) -> List[Dict[str, Any]]:
-        """Semantic similarity search over kg_nodes using pgvector."""
+        """Semantic similarity search on kg_nodes via pgvector (with text fallback)."""
         try:
             embedding = GeminiService.get_instance().embed(query, task_type="retrieval_query")
             client = get_client()
-            # Use Supabase RPC for pgvector similarity
             result = client.rpc(
                 "search_kg_nodes",
                 {
@@ -156,30 +151,58 @@ class SupabaseMemory:
             ]
         except Exception as e:
             logger.warning(
-                "search_nodes pgvector RPC not available, falling back to text search: %s",
+                "search_nodes pgvector RPC unavailable, falling back to text filter: %s",
                 str(e)[:120],
             )
-            # Fallback: return all nodes filtered by name/summary contains query
             all_nodes = self.get_all_nodes(graph_id)
             q_lower = query.lower()
             scored = [
-                n
-                for n in all_nodes
+                n for n in all_nodes
                 if q_lower in (n.get("name") or "").lower()
                 or q_lower in (n.get("summary") or "").lower()
             ]
             return scored[:top_k]
 
     def search_edges(
-        self, graph_id: str, query: str, top_k: int = 10
+        self, graph_id: str, query: str, top_k: int = 10,
     ) -> List[Dict[str, Any]]:
-        """Text search over kg_edges facts."""
+        """Keyword search on kg_edges.fact — uses RPC when available, Python fallback otherwise."""
+        # Try the RPC first — cheaper than pulling all edges
+        try:
+            client = get_client()
+            result = client.rpc(
+                "search_kg_edges_by_keyword",
+                {
+                    "p_graph_id": graph_id,
+                    "p_keyword": query or "",
+                    "p_top_k": top_k,
+                },
+            ).execute()
+            rows = result.data or []
+            if rows:
+                return [
+                    {
+                        "uuid": r.get("edge_uuid", ""),
+                        "name": r.get("name", ""),
+                        "fact": r.get("fact", ""),
+                        "source_node_uuid": r.get("source_node_uuid", ""),
+                        "target_node_uuid": r.get("target_node_uuid", ""),
+                        "attributes": r.get("attributes") or {},
+                    }
+                    for r in rows
+                ]
+        except Exception as e:
+            logger.debug("search_kg_edges_by_keyword RPC missing, using Python fallback: %s",
+                         str(e)[:120])
+
+        # Fallback: fetch all edges and filter in Python
         try:
             all_edges = self.get_all_edges(graph_id)
-            q_lower = query.lower()
+            q_lower = (query or "").lower()
+            if not q_lower:
+                return all_edges[:top_k]
             scored = [
-                e
-                for e in all_edges
+                e for e in all_edges
                 if q_lower in (e.get("fact") or "").lower()
                 or q_lower in (e.get("name") or "").lower()
             ]
@@ -189,7 +212,7 @@ class SupabaseMemory:
             return []
 
     def get_node_and_edges(
-        self, graph_id: str, node_uuid: str
+        self, graph_id: str, node_uuid: str,
     ) -> Dict[str, Any]:
         """Get a single node with all its edges."""
         all_nodes = self.get_all_nodes(graph_id)
@@ -198,8 +221,7 @@ class SupabaseMemory:
         if not node:
             return {}
         related = [
-            e
-            for e in all_edges
+            e for e in all_edges
             if e["source_node_uuid"] == node_uuid or e["target_node_uuid"] == node_uuid
         ]
         return {**node, "related_edges": related}
@@ -214,52 +236,62 @@ class SupabaseMemory:
             logger.error("delete_graph failed: %s", str(e)[:120])
 
     def get_graph_stats(self, graph_id: str) -> Dict[str, Any]:
-        """Return node and edge count for a graph."""
+        """Return node count, edge count, entity types for a graph.
+        Uses the get_graph_stats RPC when available, Python fallback otherwise."""
+        try:
+            client = get_client()
+            result = client.rpc("get_graph_stats", {"p_graph_id": graph_id}).execute()
+            rows = result.data or []
+            if rows:
+                r = rows[0]
+                return {
+                    "graph_id": graph_id,
+                    "node_count": r.get("node_count", 0),
+                    "edge_count": r.get("edge_count", 0),
+                    "entity_types": r.get("entity_types", {}),
+                }
+        except Exception as e:
+            logger.debug("get_graph_stats RPC missing, using Python fallback: %s",
+                         str(e)[:120])
+
+        # Fallback
         nodes = self.get_all_nodes(graph_id)
         edges = self.get_all_edges(graph_id)
-        entity_types: set = set()
+        entity_types: Dict[str, int] = {}
         for n in nodes:
             for label in (n.get("labels") or []):
                 if label not in ("Entity", "Node"):
-                    entity_types.add(label)
+                    entity_types[label] = entity_types.get(label, 0) + 1
         return {
             "graph_id": graph_id,
             "node_count": len(nodes),
             "edge_count": len(edges),
-            "entity_types": list(entity_types),
+            "entity_types": entity_types,
         }
 
-    # ─── Agent memory (conversation history) ─────────────────────────────────
+    # ── Agent memory (conversation history) ──────────────────────────────────
 
     def store_memory(
-        self,
-        session_id: str,
-        content: str,
-        role: str = "user",
-        agent_id: int = 0,
+        self, session_id: str, content: str,
+        role: str = "user", agent_id: int = 0,
     ) -> None:
         """Store a memory entry with embedding."""
         embedding = GeminiService.get_instance().embed(content)
         client = get_client()
         try:
-            client.table("agent_memory").insert(
-                {
-                    "session_id": session_id,
-                    "agent_id": agent_id,
-                    "role": role,
-                    "content": content,
-                    "embedding": embedding,
-                }
-            ).execute()
+            client.table("agent_memory").insert({
+                "session_id": session_id,
+                "agent_id": agent_id,
+                "role": role,
+                "content": content,
+                "embedding": embedding,
+            }).execute()
         except Exception as e:
             logger.warning("store_memory failed: %s", str(e)[:120])
 
     def retrieve_memory(
-        self,
-        session_id: str,
-        query: str,
-        agent_id: int = 0,
-        top_k: int = 3,
+        self, session_id: str, query: str,
+        agent_id: int = 0, top_k: int = 3,
     ) -> List[Dict[str, Any]]:
         """Retrieve top-k relevant memories via pgvector similarity."""
         try:
@@ -277,9 +309,8 @@ class SupabaseMemory:
             return result.data or []
         except Exception as e:
             logger.warning(
-                "retrieve_memory pgvector RPC failed, falling back: %s", str(e)[:120]
+                "retrieve_memory pgvector RPC failed, using recent-fallback: %s", str(e)[:120]
             )
-            # Fallback: return recent entries
             try:
                 client = get_client()
                 result = (
@@ -295,26 +326,21 @@ class SupabaseMemory:
             except Exception:
                 return []
 
-    # ─── Simulation steps ─────────────────────────────────────────────────────
+    # ── Simulation steps ─────────────────────────────────────────────────────
 
     def store_simulation_step(
-        self,
-        simulation_id: str,
-        round_num: int,
-        step_data: Dict[str, Any],
-        platform: str = "",
+        self, simulation_id: str, round_num: int,
+        step_data: Dict[str, Any], platform: str = "",
     ) -> None:
         """Store a simulation step to Supabase."""
         client = get_client()
         try:
-            client.table("simulation_steps").insert(
-                {
-                    "simulation_id": simulation_id,
-                    "round_num": round_num,
-                    "platform": platform,
-                    "step_data": step_data,
-                }
-            ).execute()
+            client.table("simulation_steps").insert({
+                "simulation_id": simulation_id,
+                "round_num": round_num,
+                "platform": platform,
+                "step_data": step_data,
+            }).execute()
         except Exception as e:
             logger.warning("store_simulation_step failed: %s", str(e)[:120])
 
