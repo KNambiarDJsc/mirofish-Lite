@@ -1,127 +1,115 @@
 <template>
-  <div class="ax-root">
-    <!-- ── NAV ───────────────────────────────────────────────── -->
-    <nav class="ax-nav">
-      <div class="ax-logo">AX<span class="x-accent">◈</span>ONIC</div>
-      <div class="ax-nav-right">
-        <div class="credit-pill">
+  <div class="cv-root">
+    <!-- Gradient Background -->
+    <div class="cv-bg"></div>
+
+    <!-- NAV -->
+    <nav class="cv-nav">
+      <div class="cv-logo" @click="$router.push('/')">AX<span class="logo-dot">◈</span>ONIC</div>
+      <div class="cv-nav-right">
+        <div class="credit-badge">
           <span class="credit-dot"></span>
-          <span class="credit-label">{{ creditsDisplay }} credits</span>
+          {{ creditsDisplay }} credits
         </div>
-        <a href="https://razorpay.com" class="buy-link" target="_blank">Top up ↗</a>
+        <a href="https://razorpay.com" class="topup-link" target="_blank">Top up ↗</a>
       </div>
     </nav>
 
-    <!-- ── MAIN ──────────────────────────────────────────────── -->
-    <main class="ax-main">
+    <!-- MAIN CONTENT -->
+    <main class="cv-main">
+      <div class="cv-card" :class="{ 'card-ready': ready }">
 
-      <!-- LEFT: Context -->
-      <aside class="ax-sidebar">
-        <div class="sidebar-tag">DECISION ENGINE v1.1</div>
-        <h1 class="sidebar-headline">Simulate<br>your<br><span class="headline-red">strategy.</span></h1>
-        <p class="sidebar-sub">
-          Stop guessing. Paste your strategy documents and run a simulation 
-          to see how the Indian market will realistically react.
-        </p>
-
-
-        <div class="step-track">
-          <div class="st-item active"><span class="st-n">01</span><span class="st-label">Strategy Definition</span></div>
-          <div class="st-item"><span class="st-n">02</span><span class="st-label">Simulation</span></div>
-          <div class="st-item"><span class="st-n">03</span><span class="st-label">Decision Report</span></div>
-        </div>
-      </aside>
-
-      <!-- RIGHT: Form -->
-      <section class="ax-form-panel">
-        <div class="form-header">
-          <span class="form-tag">// STRATEGY SIMULATION</span>
-          <span class="form-step">STEP 01 / 03</span>
+        <!-- Header -->
+        <div class="cv-header">
+          <h1 class="cv-title">Simulate your strategy</h1>
+          <p class="cv-subtitle">
+            Upload your strategies and add a prompt then click generate report to<br>
+            get your detailed report.
+          </p>
         </div>
 
-        <form @submit.prevent="launch" class="ax-form">
+        <form @submit.prevent="launch" class="cv-form">
 
-          <!-- Upload Strategy Section -->
-          <div class="field-block">
-            <label class="field-label">
-              STRATEGY DOCUMENTS / CONTEXT
-              <span class="label-opt">(PDF, TXT, MD)</span>
-            </label>
-            
-            <div 
+          <!-- Upload Zone -->
+          <div class="form-field">
+            <label class="field-label">Upload your files</label>
+            <div
               class="upload-zone"
-              :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
+              :class="{ 'dz-hover': isDragOver, 'dz-filled': files.length > 0 }"
               @dragover.prevent="isDragOver = true"
               @dragleave.prevent="isDragOver = false"
               @drop.prevent="handleDrop"
               @click="triggerFile"
             >
-              <input 
+              <input
                 ref="fileInput"
-                type="file" 
-                multiple 
-                accept=".pdf,.txt,.md" 
-                class="hidden-input"
+                type="file"
+                multiple
+                accept=".pdf,.txt,.md"
+                class="file-input-hidden"
                 @change="handleSelect"
               />
-              
-              <div v-if="files.length === 0" class="upload-inner">
-                <div class="upload-icon">↑</div>
-                <div class="upload-text">Drag & Drop strategy files here</div>
-                <div class="upload-sub">or click to browse from local storage</div>
-              </div>
-              
-              <div v-else class="file-list">
-                <div v-for="(f, i) in files" :key="i" class="file-item">
-                  <span class="file-icon">📄</span>
-                  <span class="file-name">{{ f.name }}</span>
-                  <span class="file-size">{{ (f.size / 1024).toFixed(1) }} KB</span>
-                  <button type="button" class="remove-file" @click.stop="removeFile(i)">×</button>
+
+              <!-- Empty state -->
+              <div v-if="files.length === 0" class="dz-empty">
+                <div class="dz-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14,2 14,8 20,8"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
+                  </svg>
                 </div>
-                <div class="add-more">+ Add more documents</div>
+                <div class="dz-text">Drop file here or click to upload</div>
+                <div class="dz-sub">TXT, PDF Supported</div>
+              </div>
+
+              <!-- Files list -->
+              <div v-else class="dz-files">
+                <div v-for="(f, i) in files" :key="i" class="dz-file-row">
+                  <span class="dfr-icon">📄</span>
+                  <span class="dfr-name">{{ f.name }}</span>
+                  <span class="dfr-size">{{ (f.size / 1024).toFixed(1) }} KB</span>
+                  <button type="button" class="dfr-remove" @click.stop="removeFile(i)">×</button>
+                </div>
+                <div class="dz-add">+ Add more files</div>
               </div>
             </div>
-            <div class="field-hint">Upload brand guidelines, product details, or research to ground the model.</div>
           </div>
 
-          <!-- Simulation Prompt -->
-          <div class="field-block">
-            <label class="field-label">SIMULATION PROMPT <span class="req">*</span></label>
+          <!-- Prompt -->
+          <div class="form-field">
+            <label class="field-label">Enter your prompt</label>
             <textarea
               v-model="form.prompt"
-              class="ax-input ax-textarea"
-              placeholder="What do you want to test? e.g. 'Launch of a premium organic tea brand targeting Gen Z in Bangalore via Instagram Reels with a humorous tone.'"
-              rows="4"
+              class="cv-textarea"
+              placeholder="Simulate this strategy for the summer season."
+              rows="5"
               required
             ></textarea>
-            <div class="field-hint">Describe the specific campaign or move you want to simulate.</div>
           </div>
 
           <!-- Error -->
-          <div v-if="error" class="ax-error">
-            <span class="error-icon">⚠</span> {{ error }}
-          </div>
+          <div v-if="error" class="cv-error">⚠ {{ error }}</div>
 
           <!-- Submit -->
-          <button
-            type="submit"
-            class="ax-launch-btn"
-            :disabled="!canSubmit || submitting"
-          >
-            <span v-if="!submitting">
-              RUN SIMULATION
-              <span class="btn-arrow">→</span>
-            </span>
-            <span v-else class="btn-loading">
-              <span class="pulse-dot"></span>
-              Initializing engine...
-            </span>
-          </button>
-
+          <div class="cv-submit-row">
+            <button
+              type="submit"
+              class="cv-submit-btn"
+              :class="{ 'btn-loading': submitting }"
+              :disabled="!canSubmit || submitting"
+            >
+              <span v-if="!submitting">Generate your Report</span>
+              <span v-else class="btn-spinner-wrap">
+                <span class="btn-spinner"></span>
+                Initializing engine...
+              </span>
+            </button>
+          </div>
 
         </form>
-      </section>
-
+      </div>
     </main>
   </div>
 </template>
@@ -131,89 +119,59 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { saveCampaign, getBalance, getUserId } from '../api/mvp.js'
 
-const router = useRouter()
-const fileInput = ref(null)
+const router     = useRouter()
+const fileInput  = ref(null)
 const isDragOver = ref(false)
-const files = ref([])
-
-const form = ref({
-  prompt:        '',
-})
-
+const files      = ref([])
+const ready      = ref(false)
+const form       = ref({ prompt: '' })
 const submitting = ref(false)
 const error      = ref('')
 const creditsDisplay = ref('—')
 
-const canSubmit = computed(() =>
-  form.value.prompt.trim().length > 10
-)
+const canSubmit = computed(() => form.value.prompt.trim().length > 10)
 
 const triggerFile = () => fileInput.value?.click()
 
-const handleSelect = (e) => {
-  const newFiles = Array.from(e.target.files)
-  addFiles(newFiles)
-}
-
-const handleDrop = (e) => {
-  isDragOver.value = false
-  const newFiles = Array.from(e.dataTransfer.files)
-  addFiles(newFiles)
-}
+const handleSelect = (e) => addFiles(Array.from(e.target.files))
+const handleDrop   = (e) => { isDragOver.value = false; addFiles(Array.from(e.dataTransfer.files)) }
 
 const addFiles = (newFiles) => {
   const allowed = ['.pdf', '.txt', '.md']
-  const filtered = newFiles.filter(f => {
-    const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase()
-    return allowed.includes(ext)
-  })
-  files.value.push(...filtered)
+  files.value.push(...newFiles.filter(f => allowed.includes(f.name.slice(f.name.lastIndexOf('.')).toLowerCase())))
 }
-
 const removeFile = (i) => files.value.splice(i, 1)
 
-// Helper to read file as text
-const readFile = (file) => {
-  return new Promise((resolve) => {
-    if (file.type === 'application/pdf') {
-      // Basic placeholder for PDF as we don't have a parser library in browser here
-      resolve(`[FILE: ${file.name} - ${file.size} bytes]`)
-    } else {
-      const reader = new FileReader()
-      reader.onload = (e) => resolve(e.target.result)
-      reader.readAsText(file)
-    }
-  })
-}
+const readFile = (file) => new Promise(resolve => {
+  if (file.type === 'application/pdf') return resolve(`[FILE: ${file.name}]`)
+  const r = new FileReader()
+  r.onload = e => resolve(e.target.result)
+  r.readAsText(file)
+})
 
 onMounted(async () => {
   getUserId()
   try {
     const res = await getBalance()
     creditsDisplay.value = res.credits_display ?? '3.0'
-  } catch {
-    creditsDisplay.value = '3.0'
-  }
+  } catch { creditsDisplay.value = '3.0' }
+  setTimeout(() => { ready.value = true }, 80)
 })
 
 async function launch() {
   if (!canSubmit.value || submitting.value) return
-  error.value   = ''
+  error.value = ''
   submitting.value = true
-
   try {
-    // Read all files context
-    const fileContents = await Promise.all(files.value.map(f => readFile(f)))
-    const strategyContext = fileContents.join('\n\n---\n\n')
-
+    const contents = await Promise.all(files.value.map(readFile))
     const name = form.value.prompt.substring(0, 40) + (form.value.prompt.length > 40 ? '...' : '')
-    saveCampaign({ 
+    saveCampaign({
       ...form.value,
-      name: name,
-      strategy_docs: strategyContext,
+      name,
+      strategy_docs: contents.join('\n\n---\n\n'),
       platform: 'Digital',
       tone: 'Variable',
-      goal: 'Simulation'
+      goal: 'Simulation',
     })
     router.push({ name: 'Run' })
   } catch (e) {
@@ -224,478 +182,241 @@ async function launch() {
 </script>
 
 <style scoped>
-/* ── Design tokens ─────────────────────────────────────────── */
-:root {
-  --bg:       #0A0A0A;
-  --surface:  #111111;
-  --border:   #1E1E1E;
-  --red:      #FF1744;
-  --cyan:     #00E5FF;
-  --text:     #FFFFFF;
-  --muted:    #555555;
-  --faint:    #2A2A2A;
-  --mono:     'JetBrains Mono', monospace;
-  --sans:     'Space Grotesk', system-ui, sans-serif;
-}
-
-.ax-root {
+/* ── Root & Background ─────────────────────────────────────── */
+.cv-root {
   min-height: 100vh;
-  background: #0A0A0A;
-  color: #FFFFFF;
-  font-family: 'Space Grotesk', system-ui, sans-serif;
   display: flex;
   flex-direction: column;
+  position: relative;
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow: hidden;
 }
 
-/* NAV */
-.ax-nav {
+.cv-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 0% 40%,  rgba(232,121,58,0.22) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 60%, rgba(255,200,120,0.18) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 100%, rgba(232,121,58,0.12) 0%, transparent 50%),
+    #FDF6EC;
+  animation: bg-shift 20s ease-in-out infinite alternate;
+}
+@keyframes bg-shift {
+  0%   { background-position: 0% 40%, 100% 60%, 50% 100%; }
+  100% { background-position: 5% 45%, 95% 55%, 45% 95%;  }
+}
+
+/* ── NAV ──────────────────────────────────────────────────── */
+.cv-nav {
+  position: relative;
+  z-index: 10;
   height: 56px;
-  border-bottom: 1px solid #1E1E1E;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 32px;
-  background: #0A0A0A;
-  position: sticky;
-  top: 0;
-  z-index: 100;
+  padding: 0 40px;
+  border-bottom: 1px solid rgba(61,30,15,0.08);
+  background: rgba(253,246,236,0.7);
+  backdrop-filter: blur(12px);
 }
-
-.ax-logo {
-  font-family: 'JetBrains Mono', monospace;
+.cv-logo {
   font-weight: 800;
-  font-size: 18px;
+  font-size: 15px;
   letter-spacing: 3px;
-  color: #FF1744;
+  color: #3D1E0F;
+  cursor: pointer;
+  user-select: none;
 }
-
-.x-accent {
-  color: #00E5FF;
-  font-size: 14px;
-  margin: 0 1px;
-}
-
-.ax-nav-right {
+.logo-dot { color: #E8793A; font-size: 12px; margin: 0 2px; }
+.cv-nav-right { display: flex; align-items: center; gap: 16px; }
+.credit-badge {
   display: flex;
   align-items: center;
-  gap: 20px;
-}
-
-.credit-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #111111;
-  border: 1px solid #1E1E1E;
-  padding: 6px 14px;
-  font-family: 'JetBrains Mono', monospace;
+  gap: 7px;
   font-size: 12px;
-  color: #888888;
+  color: #8A6A50;
+  background: rgba(255,255,255,0.7);
+  border: 1px solid rgba(61,30,15,0.1);
+  padding: 5px 14px;
+  border-radius: 20px;
 }
-
 .credit-dot {
-  width: 6px;
-  height: 6px;
+  width: 6px; height: 6px;
   border-radius: 50%;
-  background: #00E5FF;
-  animation: pulse-dot 2s infinite;
+  background: #E8793A;
+  animation: dot-pulse 2s infinite;
 }
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-.buy-link {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: #FF1744;
+@keyframes dot-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.topup-link {
+  font-size: 12px;
+  color: #E8793A;
   text-decoration: none;
-  letter-spacing: 1px;
+  font-weight: 600;
   transition: opacity 0.2s;
 }
-.buy-link:hover { opacity: 0.7; }
+.topup-link:hover { opacity: 0.7; }
 
-/* MAIN LAYOUT */
-.ax-main {
+/* ── MAIN ─────────────────────────────────────────────────── */
+.cv-main {
   flex: 1;
   display: flex;
-  max-width: 1280px;
-  margin: 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px 64px;
+  position: relative;
+  z-index: 2;
+}
+
+/* ── CARD ─────────────────────────────────────────────────── */
+.cv-card {
   width: 100%;
-  padding: 0;
+  max-width: 580px;
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
 }
+.cv-card.card-ready { opacity: 1; transform: none; }
 
-/* SIDEBAR */
-.ax-sidebar {
-  width: 340px;
-  min-width: 320px;
-  padding: 48px 40px;
-  border-right: 1px solid #1E1E1E;
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-}
-
-.sidebar-tag {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: #FF1744;
-  padding: 4px 8px;
-  border: 1px solid #FF1744;
-  display: inline-block;
-  width: fit-content;
-}
-
-.sidebar-headline {
-  font-size: 3.2rem;
+/* ── HEADER ───────────────────────────────────────────────── */
+.cv-header { text-align: center; margin-bottom: 36px; }
+.cv-title {
+  font-size: clamp(2rem, 4vw, 2.8rem);
   font-weight: 700;
-  line-height: 1.05;
-  margin: 0;
-  letter-spacing: -2px;
-  color: #FFFFFF;
+  color: #2D1A0A;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  margin: 0 0 14px;
+  font-family: 'Georgia', 'Times New Roman', serif;
 }
-
-.headline-red {
-  color: #FF1744;
-}
-
-.sidebar-sub {
+.cv-subtitle {
   font-size: 0.9rem;
+  color: #8A6A50;
   line-height: 1.7;
-  color: #555555;
   margin: 0;
 }
 
-.sidebar-metrics {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  border: 1px solid #1E1E1E;
-}
+/* ── FORM ─────────────────────────────────────────────────── */
+.cv-form { display: flex; flex-direction: column; gap: 20px; }
 
-.sm-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 16px;
-  border-bottom: 1px solid #1E1E1E;
-  font-size: 12px;
-}
-.sm-row:last-child { border-bottom: none; }
-
-.sm-key {
-  font-family: 'JetBrains Mono', monospace;
-  color: #444444;
-  letter-spacing: 0.5px;
-}
-
-.sm-val {
-  color: #CCCCCC;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-}
-
-.step-track {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-top: auto;
-}
-
-.st-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  opacity: 0.3;
-}
-.st-item.active { opacity: 1; }
-
-.st-n {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: #FF1744;
-  font-weight: 700;
-}
-
-.st-label {
-  font-size: 13px;
-  color: #CCCCCC;
-  font-weight: 500;
-}
-
-/* FORM PANEL */
-.ax-form-panel {
-  flex: 1;
-  padding: 48px 56px;
-  overflow-y: auto;
-}
-
-.form-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 40px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #1E1E1E;
-}
-
-.form-tag {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #444444;
-  letter-spacing: 1px;
-}
-
-.form-step {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: #FF1744;
-  letter-spacing: 2px;
-}
-
-.ax-form {
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-  max-width: 680px;
-}
-
-.field-block {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
+.form-field { display: flex; flex-direction: column; gap: 10px; }
 .field-label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: #555555;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3D1E0F;
 }
-
-.label-opt {
-  color: #2A2A2A;
-  font-weight: 400;
-}
-
-.req { color: #FF1744; }
 
 /* UPLOAD ZONE */
 .upload-zone {
-  background: #0D0D0D;
-  border: 1px dashed #1E1E1E;
+  background: #FFFFFF;
+  border: 1.5px dashed rgba(61,30,15,0.2);
+  border-radius: 16px;
   min-height: 140px;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.23, 1, 0.32, 1);
-  position: relative;
+  transition: border-color 0.25s, background 0.25s, transform 0.15s;
+  padding: 20px;
 }
-
-.upload-zone:hover {
-  border-color: #FF1744;
-  background: #111111;
-  box-shadow: 0 0 40px rgba(255,23,68,0.03);
-}
-
-.upload-zone.drag-over {
-  border-color: #00E5FF;
-  background: rgba(0, 229, 255, 0.05);
+.upload-zone:hover { border-color: #E8793A; background: rgba(232,121,58,0.03); }
+.upload-zone.dz-hover {
+  border-color: #E8793A;
+  background: rgba(232,121,58,0.06);
   transform: scale(1.01);
 }
+.upload-zone.dz-filled { border-style: solid; border-color: rgba(61,30,15,0.15); align-items: flex-start; }
 
-.hidden-input { display: none; }
+.file-input-hidden { display: none; }
 
-.upload-inner {
-  text-align: center;
-}
+.dz-empty { text-align: center; }
+.dz-icon { color: #C4A882; margin-bottom: 10px; display: flex; justify-content: center; }
+.dz-text { font-size: 14px; font-weight: 600; color: #5A3E28; margin-bottom: 4px; }
+.dz-sub  { font-size: 12px; color: #C4A882; }
 
-.upload-icon {
-  font-size: 24px;
-  color: #1E1E1E;
-  margin-bottom: 12px;
-  transition: color 0.2s;
-}
-.upload-zone:hover .upload-icon { color: #FF1744; }
-
-.upload-text {
-  font-size: 14px;
-  color: #888888;
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.upload-sub {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: #333333;
-  letter-spacing: 0.5px;
-}
-
-.file-list {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.file-item {
-  background: #111111;
-  border: 1px solid #1E1E1E;
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  animation: slide-in 0.3s ease both;
-}
-
-@keyframes slide-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.file-icon { font-size: 12px; opacity: 0.5; }
-.file-name { font-size: 13px; color: #CCCCCC; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.file-size { font-family: var(--font-mono); font-size: 10px; color: #333333; }
-
-.remove-file {
-  background: none;
-  border: none;
-  color: #333333;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 0 4px;
-}
-.remove-file:hover { color: #FF1744; }
-
-.add-more {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: #555555;
-  text-align: center;
-  padding-top: 8px;
-  letter-spacing: 1px;
-}
-
-.ax-input {
-  background: #111111;
-  border: 1px solid #1E1E1E;
-  color: #FFFFFF;
-  padding: 16px;
-  font-family: 'Space Grotesk', system-ui, sans-serif;
-  font-size: 15px;
-  outline: none;
-  border-radius: 0;
-  transition: all 0.2s;
-  width: 100%;
-  box-sizing: border-box;
-  line-height: 1.6;
-}
-
-.ax-input:focus {
-  border-color: #FF1744;
-  background: #141414;
-  box-shadow: 0 0 20px rgba(255,23,68,0.05);
-}
-
-.ax-input::placeholder { color: #333333; }
-
-.ax-textarea {
-  resize: vertical;
-  min-height: 120px;
-}
-
-.field-hint {
-  font-size: 11px;
-  color: #333333;
-  font-family: 'JetBrains Mono', monospace;
-}
-
-/* ERROR */
-.ax-error {
-  background: rgba(255, 23, 68, 0.08);
-  border: 1px solid #FF1744;
-  padding: 12px 16px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #FF1744;
+.dz-files { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.dz-file-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  background: #FDF6EC;
+  border: 1px solid rgba(61,30,15,0.08);
+  border-radius: 10px;
+  padding: 10px 14px;
+  animation: row-in 0.25s ease both;
+}
+@keyframes row-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.dfr-icon { font-size: 14px; }
+.dfr-name { flex: 1; font-size: 13px; color: #3D1E0F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dfr-size { font-size: 11px; color: #BBA890; font-family: monospace; }
+.dfr-remove { background: none; border: none; color: #BBA890; font-size: 18px; cursor: pointer; padding: 0; line-height: 1; transition: color 0.2s; }
+.dfr-remove:hover { color: #c0392b; }
+.dz-add { font-size: 12px; color: #E8793A; text-align: center; padding-top: 4px; cursor: pointer; }
+
+/* TEXTAREA */
+.cv-textarea {
+  background: #FFFFFF;
+  border: 1.5px solid rgba(61,30,15,0.12);
+  border-radius: 16px;
+  padding: 18px 20px;
+  font-size: 14px;
+  color: #2D1A0A;
+  font-family: 'Inter', system-ui, sans-serif;
+  line-height: 1.65;
+  outline: none;
+  resize: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.25s, box-shadow 0.25s;
+  italic-like: italic;
+}
+.cv-textarea::placeholder { color: #C4A882; font-style: italic; }
+.cv-textarea:focus {
+  border-color: #E8793A;
+  box-shadow: 0 0 0 4px rgba(232,121,58,0.1);
 }
 
-/* LAUNCH BUTTON */
-.ax-launch-btn {
-  background: #FF1744;
+/* ERROR */
+.cv-error {
+  background: rgba(192,57,43,0.08);
+  border: 1px solid rgba(192,57,43,0.25);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #c0392b;
+}
+
+/* SUBMIT */
+.cv-submit-row { display: flex; justify-content: center; padding-top: 8px; }
+.cv-submit-btn {
+  background: #E8793A;
   border: none;
   color: #FFFFFF;
-  padding: 20px 32px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 2px;
+  padding: 16px 40px;
+  border-radius: 50px;
   cursor: pointer;
-  border-radius: 0;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  width: 100%;
-  margin-top: 8px;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+  min-width: 220px;
 }
-
-.ax-launch-btn:hover:not(:disabled) {
-  background: #FF4569;
-  transform: translateY(-1px);
-  box-shadow: 0 10px 30px rgba(255,23,68,0.2);
+.cv-submit-btn:hover:not(:disabled) {
+  background: #d4622a;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(232,121,58,0.35);
 }
+.cv-submit-btn:active:not(:disabled) { transform: scale(0.97); }
+.cv-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cv-submit-btn.btn-loading { opacity: 1; }
 
-.ax-launch-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.btn-arrow {
-  font-size: 16px;
-  transition: transform 0.2s;
-}
-
-.ax-launch-btn:hover .btn-arrow { transform: translateX(4px); }
-
-.btn-loading {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.pulse-dot {
-  width: 8px;
-  height: 8px;
+.btn-spinner-wrap { display: flex; align-items: center; gap: 10px; }
+.btn-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
   border-radius: 50%;
-  background: #FFFFFF;
-  animation: pulse-dot 0.8s infinite;
+  animation: spin 0.7s linear infinite;
 }
-
-.launch-meta {
-  text-align: center;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  color: #333333;
-  letter-spacing: 1px;
-}
-
-/* Scrollbar */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: #0A0A0A; }
-::-webkit-scrollbar-thumb { background: #1E1E1E; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
 </style>

@@ -1,124 +1,104 @@
 <template>
-  <div class="ax-root">
+  <div class="rv-root">
+    <!-- Gradient Background -->
+    <div class="rv-bg"></div>
+
     <!-- NAV -->
-    <nav class="ax-nav">
-      <div class="ax-logo" @click="router.push('/')">AX<span class="x-accent">◈</span>ONIC</div>
-      <div class="nav-center">
-        <div class="phase-track">
-          <span class="phase-item done">01 DEFINITION</span>
-          <span class="phase-sep">──</span>
-          <span class="phase-item" :class="{ active: phase >= 1 }">02 SIMULATION</span>
-          <span class="phase-sep">──</span>
-          <span class="phase-item" :class="{ active: phase >= 2 }">03 REPORT</span>
-        </div>
+    <nav class="rv-nav">
+      <div class="rv-logo" @click="router.push('/')">AX<span class="logo-dot">◈</span>ONIC</div>
+      <div class="nav-phases">
+        <span class="phase done">01 Definition</span>
+        <span class="phase-sep">——</span>
+        <span class="phase" :class="{ active: phase >= 1 }">02 Simulation</span>
+        <span class="phase-sep">——</span>
+        <span class="phase" :class="{ active: phase >= 2 }">03 Report</span>
       </div>
-      <div class="status-pill" :class="statusClass">
+      <div class="nav-status" :class="statusClass">
         <span class="status-dot"></span>
         {{ statusText }}
       </div>
     </nav>
 
-    <!-- SYSTEM LOG BAR -->
-    <div class="log-bar">
-      <span class="log-prefix">SYS &gt;</span>
-      <span class="log-line">{{ currentLog }}</span>
-      <span class="log-cursor" v-if="running">_</span>
-    </div>
-
     <!-- MAIN -->
-    <main class="ax-main">
+    <main class="rv-main">
+      <div class="rv-content" :class="{ 'content-ready': ready }">
 
-      <!-- LEFT: Signal Panel -->
-      <aside class="signal-panel">
-        <div class="sp-header">// LIVE SIGNALS</div>
-        <div class="signals-grid">
-          <div v-for="sig in signals" :key="sig.key" class="signal-card" :class="`sig-${sig.status}`">
-            <div class="sig-label">{{ sig.label }}</div>
-            <div class="sig-val">{{ sig.value }}</div>
-            <div class="sig-bar">
-              <div class="sig-fill" :style="{ width: sig.pct + '%', background: sig.color }"></div>
+        <!-- Title -->
+        <div class="rv-header">
+          <h1 class="rv-title">Running your Simulation</h1>
+          <p class="rv-subtitle">Your simulation is running. Your detailed report will be ready soon.</p>
+        </div>
+
+        <!-- STEP CARD (matches screenshot exactly) -->
+        <div class="step-card">
+
+          <!-- Card Header (collapsed / expanded state) -->
+          <div class="sc-header">
+            <div class="sc-header-left">
+              <span class="sc-current-title">{{ activeStep ? activeStep.title : 'Campaign Loading' }}</span>
+              <span class="sc-step-badge" v-if="activeStepIndex >= 0">
+                STEP {{ activeStepIndex + 1 }} OF {{ steps.length }}
+              </span>
             </div>
-            <div class="sig-trend">{{ sig.trend }}</div>
+            <div class="sc-header-right">
+              <span class="sc-pct" v-if="activeStep">{{ activeStep.pct }}%</span>
+              <button class="sc-toggle" @click="expanded = !expanded">
+                {{ expanded ? '∧' : '∨' }}
+              </button>
+            </div>
           </div>
-        </div>
 
-        <!-- Campaign summary -->
-        <div class="campaign-summary" v-if="campaign">
-          <div class="cs-header">// STRATEGY CONTEXT</div>
-          <div class="cs-row"><span class="cs-key">PROMPT</span><span class="cs-val">{{ campaign.name }}</span></div>
-          <div class="cs-row" v-if="campaign.strategy_docs"><span class="cs-key">DOCS</span><span class="cs-val">Attached ({{ campaign.strategy_docs.length }} chars)</span></div>
-          <div class="cs-row"><span class="cs-key">MARKET</span><span class="cs-val">India (Unified)</span></div>
-        </div>
-      </aside>
+          <!-- Steps List -->
+          <div class="sc-steps" v-show="expanded">
+            <div
+              v-for="(step, i) in steps"
+              :key="i"
+              class="sc-step-row"
+              :class="{
+                'scr-done':    step.done,
+                'scr-active':  step.active,
+                'scr-pending': !step.done && !step.active
+              }"
+            >
+              <!-- Number -->
+              <div class="scr-num">{{ String(i + 1).padStart(2, '0') }}</div>
 
-      <!-- RIGHT: Event Stream -->
-      <section class="event-panel">
-        <div class="ep-header">
-          <span class="ep-tag">// SIMULATION STREAM</span>
-          <div class="round-counter" v-if="currentRound > 0">
-            ROUND {{ currentRound }} / 3
-          </div>
-        </div>
-
-        <!-- Timeline -->
-        <div class="event-stream" ref="streamRef">
-
-          <!-- Static steps (always visible) -->
-          <div class="stream-step" v-for="(step, i) in steps" :key="i"
-            :class="{ active: step.active, done: step.done, pending: step.pending }">
-            <div class="step-left">
-              <div class="step-icon">
-                <span v-if="step.done">✓</span>
-                <span v-else-if="step.active" class="spin-icon">◌</span>
-                <span v-else>○</span>
+              <!-- Title + sub -->
+              <div class="scr-body">
+                <div class="scr-title">{{ step.title }}</div>
+                <div class="scr-sub" v-if="step.active && step.sub">{{ step.sub }}</div>
               </div>
-              <div class="step-line" v-if="i < steps.length - 1"></div>
+
+              <!-- Right state -->
+              <div class="scr-right">
+                <span v-if="step.done" class="scr-check">
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <circle cx="9" cy="9" r="9" fill="#28C840"/>
+                    <path d="M5 9l3 3 5-5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+                <span v-else-if="step.active" class="scr-pct-active">{{ step.pct }}%</span>
+                <span v-else class="scr-zero">0%</span>
+              </div>
             </div>
-            <div class="step-body">
-              <div class="step-title">{{ step.title }}</div>
-              <div class="step-sub" v-if="step.sub">{{ step.sub }}</div>
-            </div>
-            <div class="step-time" v-if="step.time">{{ step.time }}</div>
           </div>
 
-          <!-- Live Events (from simulation) -->
-          <div v-if="events.length > 0" class="events-divider">
-            <span>SIMULATION EVENTS</span>
-          </div>
+        </div>
 
-          <div
-            v-for="(ev, i) in visibleEvents"
-            :key="'ev-' + i"
-            class="event-card"
-            :class="`ev-${ev.sentiment}`"
-            :style="{ animationDelay: `${i * 0.15}s` }"
-          >
-            <div class="ev-header">
-              <span class="ev-round">ROUND {{ ev.round }}</span>
-              <span class="ev-sentiment" :class="`sent-${ev.sentiment}`">{{ ev.sentiment?.toUpperCase() }}</span>
-            </div>
-            <div class="ev-text">{{ ev.event }}</div>
-            <div class="ev-metric">{{ ev.metric }}</div>
-          </div>
-
-          <!-- Generating report state -->
-          <div v-if="generatingReport" class="gen-report-block">
-            <div class="gen-dots">
-              <span></span><span></span><span></span>
-            </div>
-            <div class="gen-text">Generating executive report...</div>
-          </div>
-
+        <!-- Log ticker below card -->
+        <div class="rv-log" v-if="running">
+          <span class="log-dot"></span>
+          <span class="log-text">{{ currentLog }}</span>
+          <span class="log-cursor">_</span>
         </div>
 
         <!-- Error -->
-        <div v-if="error" class="ax-error">
-          <span>⚠</span> {{ error }}
+        <div class="rv-error" v-if="error">
+          <span>⚠ {{ error }}</span>
           <button class="retry-btn" @click="retryRun">Retry →</button>
         </div>
 
-      </section>
-
+      </div>
     </main>
   </div>
 </template>
@@ -126,660 +106,439 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  loadCampaign,
-  runSimulation,
-  generateReport,
-  saveSimResult,
-} from '../api/mvp.js'
+import { loadCampaign, runSimulation, generateReport, saveSimResult } from '../api/mvp.js'
 
-const router    = useRouter()
-const campaign  = ref(null)
-const phase     = ref(1)
-const running   = ref(true)
-const error     = ref('')
-const events    = ref([])
-const visibleEvents = ref([])
-const generatingReport = ref(false)
-const currentRound = ref(0)
-const currentLog   = ref('Initializing AXonic simulation engine...')
-const streamRef    = ref(null)
+const router   = useRouter()
+const phase    = ref(1)
+const running  = ref(true)
+const error    = ref('')
+const ready    = ref(false)
+const expanded = ref(true)
+const currentLog = ref('Initializing AXonic simulation engine...')
+const campaign = ref(null)
 
-// ── Signals (live updating) ───────────────────────────────────
-const signals = ref([
-  { key: 'attention',      label: 'ATTENTION',      value: '—', pct: 0,  trend: 'Awaiting data', status: 'idle', color: '#00E5FF' },
-  { key: 'trust',          label: 'TRUST',          value: '—', pct: 0,  trend: 'Awaiting data', status: 'idle', color: '#00FF88' },
-  { key: 'risk',           label: 'RISK LEVEL',     value: '—', pct: 0,  trend: 'Awaiting data', status: 'idle', color: '#FF1744' },
-  { key: 'amplification',  label: 'AMPLIFICATION',  value: '—', pct: 0,  trend: 'Awaiting data', status: 'idle', color: '#FFB300' },
-])
-
-// ── Steps ─────────────────────────────────────────────────────
 const steps = ref([
-  { title: 'Campaign Loaded',        sub: '',  active: false, done: true,  pending: false, time: 'Done' },
-  { title: 'Audience Modelling',     sub: '',  active: false, done: false, pending: false, time: '' },
-  { title: 'Market Intelligence',    sub: '',  active: false, done: false, pending: false, time: '' },
-  { title: 'Simulation Running',     sub: '',  active: false, done: false, pending: false, time: '' },
-  { title: 'Report Generation',      sub: '',  active: false, done: false, pending: false, time: '' },
+  { title: 'Campaign Loading',   sub: '',                         active: false, done: false, pct: 0 },
+  { title: 'Audience Modelling', sub: 'Applying different models...', active: false, done: false, pct: 0 },
+  { title: 'Market Intelligence',sub: 'Scanning market data...',  active: false, done: false, pct: 0 },
+  { title: 'Run Simulations',    sub: 'Running simulation rounds...', active: false, done: false, pct: 0 },
+  { title: 'Report Generation',  sub: 'Generating decision report...', active: false, done: false, pct: 0 },
 ])
 
-// ── Status ────────────────────────────────────────────────────
+const activeStepIndex = computed(() => steps.value.findIndex(s => s.active))
+const activeStep      = computed(() => steps.value[activeStepIndex.value] || null)
+
 const statusClass = computed(() => {
-  if (error.value)   return 'status-error'
+  if (error.value)    return 'status-error'
   if (!running.value) return 'status-done'
   return 'status-running'
 })
 const statusText = computed(() => {
-  if (error.value)   return 'Error'
+  if (error.value)    return 'Error'
   if (!running.value) return 'Complete'
   return 'Running'
 })
 
-// ── Helpers ───────────────────────────────────────────────────
 const setLog = (msg) => { currentLog.value = msg }
+const wait   = (ms) => new Promise(r => setTimeout(r, ms))
 
 const activateStep = (i, sub = '') => {
   steps.value.forEach((s, j) => {
-    if (j < i)  { s.done = true; s.active = false }
-    if (j === i) { s.active = true; s.done = false; s.sub = sub }
-    if (j > i)  { s.active = false }
+    if (j < i)  { s.done = true; s.active = false; s.pct = 100 }
+    if (j === i) { s.active = true; s.done = false; s.sub = sub; s.pct = 0 }
+    if (j > i)  { s.active = false; s.done = false; s.pct = 0 }
   })
 }
 
-const completeStep = (i, time = '') => {
+const animateStepPct = async (stepIdx, target = 100, durationMs = 1400) => {
+  const s = steps.value[stepIdx]
+  const interval = 50
+  const steps_n  = durationMs / interval
+  const increment = target / steps_n
+  for (let p = 0; p <= target; p += increment) {
+    if (!steps.value[stepIdx].active) break
+    s.pct = Math.min(target, Math.round(p))
+    await wait(interval)
+  }
+  s.pct = target
+}
+
+const completeStep = (i) => {
   steps.value[i].done   = true
   steps.value[i].active = false
-  steps.value[i].time   = time
+  steps.value[i].pct    = 100
 }
 
-const wait = (ms) => new Promise(r => setTimeout(r, ms))
-
-const scrollBottom = () => {
-  nextTick(() => {
-    if (streamRef.value) {
-      streamRef.value.scrollTop = streamRef.value.scrollHeight
-    }
-  })
-}
-
-// Animate signals from events
-const computeSignals = (evList) => {
-  const sentimentMap = { positive: 1, neutral: 0, mixed: -0.5, negative: -1 }
-  const scores = evList.map(e => sentimentMap[e.sentiment] ?? 0)
-  const avg    = scores.reduce((a, b) => a + b, 0) / (scores.length || 1)
-
-  const attention    = Math.min(95, 40 + evList.length * 18)
-  const trust        = Math.max(10, Math.min(95, 50 + avg * 35))
-  const risk         = Math.max(5,  Math.min(90, 50 - avg * 30))
-  const amplification = Math.min(95, 30 + evList.length * 20)
-
-  signals.value[0].pct   = attention;    signals.value[0].value = attention + '%';    signals.value[0].trend = 'Growing'
-  signals.value[1].pct   = trust;        signals.value[1].value = trust + '%';        signals.value[1].trend = trust > 60 ? 'High' : 'Moderate'
-  signals.value[2].pct   = risk;         signals.value[2].value = risk + '%';         signals.value[2].trend = risk > 60 ? 'Elevated' : 'Controlled'
-  signals.value[3].pct   = amplification; signals.value[3].value = amplification + '%'; signals.value[3].trend = 'Active'
-
-  signals.value.forEach(s => { s.status = s.pct > 50 ? 'active' : 'idle' })
-}
-
-// Reveal events one by one
-const revealEvents = async (evList) => {
-  for (let i = 0; i < evList.length; i++) {
-    currentRound.value = evList[i].round
-    setLog(`Round ${evList[i].round}: ${evList[i].event.substring(0, 60)}...`)
-    visibleEvents.value.push(evList[i])
-    computeSignals(visibleEvents.value)
-    scrollBottom()
-    await wait(1200)
-  }
-}
-
-// ── Main flow ─────────────────────────────────────────────────
 const runFlow = async () => {
   campaign.value = loadCampaign()
-  if (!campaign.value) {
-    router.push({ name: 'Campaign' })
-    return
-  }
+  if (!campaign.value) { router.push({ name: 'Campaign' }); return }
 
-  // Step 2: Audience Modelling
-  activateStep(1, 'Mapping Indian consumer segments...')
+  setLog('Campaign loaded successfully.')
+
+  // Step 0: Campaign Loading
+  activateStep(0, 'Loading campaign files...')
+  await animateStepPct(0, 100, 800)
+  completeStep(0)
+  await wait(200)
+
+  // Step 1: Audience Modelling
+  activateStep(1, 'Applying different models...')
   setLog('Modelling target audience segments for Indian market...')
-  await wait(1800)
-  completeStep(1, '1.8s')
+  const audienceAnim = animateStepPct(1, 48, 1600)
+  await wait(1000)
+  setLog('Segmenting Tier 1, 2, 3 Indian consumer archetypes...')
+  await audienceAnim
+  await wait(300)
+  completeStep(1)
 
-  // Step 3: Market Intelligence
-  activateStep(2, 'Loading platform intelligence...')
-  setLog(`Loading ${campaign.value.platform} market intelligence...`)
-  await wait(1400)
-  completeStep(2, '1.4s')
+  // Step 2: Market Intelligence
+  activateStep(2, 'Scanning market data...')
+  setLog(`Loading ${campaign.value.platform || 'Digital'} market intelligence...`)
+  await animateStepPct(2, 100, 1200)
+  completeStep(2)
+  await wait(200)
 
-  // Step 4: Simulation
-  activateStep(3, 'Running strategy simulation engine...')
-  setLog('Calling intelligence layer...')
-
+  // Step 3: Run Simulations
+  activateStep(3, 'Running simulation rounds...')
+  setLog('Calling simulation intelligence layer...')
   let simEvents = []
   try {
-    const simRes  = await runSimulation(campaign.value)
-    simEvents     = simRes.events || []
+    const simPctAnim = animateStepPct(3, 80, 3000)
+    const simRes = await runSimulation(campaign.value)
+    simEvents    = simRes.events || []
+    await simPctAnim
+    await animateStepPct(3, 100, 400)
   } catch (e) {
-    // If API fails, use rule-based fallback display
     setLog('Using rule-based simulation fallback...')
     simEvents = []
-    error.value = `Simulation API error: ${e.message}. Using fallback.`
+    await animateStepPct(3, 100, 600)
   }
+  completeStep(3)
+  await wait(200)
 
-  events.value = simEvents
-  await revealEvents(simEvents)
-  completeStep(3, `${simEvents.length} events`)
-
-  // Step 5: Report
+  // Step 4: Report Generation
   phase.value = 2
-  activateStep(4, 'Calling Gemini 2.5 Flash...')
+  activateStep(4, 'Generating decision report...')
   setLog('Generating decision report — Gemini 2.5 Flash...')
-  generatingReport.value = true
-  scrollBottom()
 
   try {
+    const repPctAnim = animateStepPct(4, 80, 4000)
     const repRes = await generateReport(campaign.value, simEvents)
     saveSimResult({
       campaign: campaign.value,
-      events:   simEvents,
-      report:   repRes.report,
-      tier:     repRes.tier_used,
-      model:    repRes.model_used,
-      credits:  repRes.credits_display,
+      events: simEvents,
+      report: repRes.report,
+      tier:   repRes.tier_used,
+      model:  repRes.model_used,
+      credits: repRes.credits_display,
     })
-    completeStep(4, 'Done')
+    await repPctAnim
+    await animateStepPct(4, 100, 300)
+    completeStep(4)
     setLog('Report complete. Redirecting...')
     running.value = false
-    await wait(800)
+    await wait(700)
     router.push({ name: 'Report' })
   } catch (e) {
-    generatingReport.value = false
     error.value = `Report generation failed: ${e.message}`
     running.value = false
   }
 }
 
-const retryRun = () => {
-  error.value = ''
-  running.value = true
-  runFlow()
-}
+const retryRun = () => { error.value = ''; running.value = true; runFlow() }
 
-onMounted(() => { runFlow() })
+onMounted(() => {
+  setTimeout(() => { ready.value = true }, 80)
+  runFlow()
+})
 </script>
 
 <style scoped>
-.ax-root {
+/* ── Root & Background ─────────────────────────────────────── */
+.rv-root {
   min-height: 100vh;
-  background: #0A0A0A;
-  color: #FFFFFF;
-  font-family: 'Space Grotesk', system-ui, sans-serif;
   display: flex;
   flex-direction: column;
+  position: relative;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
-/* NAV */
-.ax-nav {
+.rv-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 0% 50%,   rgba(232,121,58,0.20) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 50%,  rgba(255,200,120,0.20) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 100%, rgba(232,121,58,0.10) 0%, transparent 50%),
+    #FDF6EC;
+  animation: bg-drift 22s ease-in-out infinite alternate;
+}
+@keyframes bg-drift {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.9; }
+  100% { opacity: 1; }
+}
+
+/* ── NAV ──────────────────────────────────────────────────── */
+.rv-nav {
+  position: relative;
+  z-index: 10;
   height: 56px;
-  border-bottom: 1px solid #1E1E1E;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 32px;
-  background: #0A0A0A;
+  padding: 0 40px;
+  border-bottom: 1px solid rgba(61,30,15,0.08);
+  background: rgba(253,246,236,0.7);
+  backdrop-filter: blur(12px);
 }
-
-.ax-logo {
-  font-family: 'JetBrains Mono', monospace;
+.rv-logo {
   font-weight: 800;
-  font-size: 18px;
+  font-size: 15px;
   letter-spacing: 3px;
-  color: #FF1744;
+  color: #3D1E0F;
   cursor: pointer;
+  user-select: none;
 }
+.logo-dot { color: #E8793A; font-size: 12px; margin: 0 2px; }
 
-.x-accent { color: #00E5FF; font-size: 14px; margin: 0 1px; }
-
-.nav-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.phase-track {
+.nav-phases {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 1px;
-}
-
-.phase-item { color: #2A2A2A; transition: color 0.4s; }
-.phase-item.done   { color: #555555; }
-.phase-item.active { color: #FF1744; }
-.phase-sep { color: #1E1E1E; }
-
-.status-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  border: 1px solid #1E1E1E;
-  font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
 }
+.phase { color: rgba(61,30,15,0.3); font-weight: 500; transition: color 0.3s; }
+.phase.done   { color: rgba(61,30,15,0.5); }
+.phase.active { color: #E8793A; font-weight: 700; }
+.phase-sep    { color: rgba(61,30,15,0.2); font-size: 10px; }
 
-.status-running { border-color: #FF1744; color: #FF1744; }
-.status-done    { border-color: #00FF88; color: #00FF88; }
-.status-error   { border-color: #FF1744; color: #FF1744; }
-
+.nav-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1.5px solid;
+  transition: all 0.3s;
+}
+.status-running { border-color: rgba(232,121,58,0.4); color: #E8793A; background: rgba(232,121,58,0.07); }
+.status-done    { border-color: rgba(40,200,64,0.4);  color: #28C840; background: rgba(40,200,64,0.07); }
+.status-error   { border-color: rgba(192,57,43,0.4);  color: #c0392b; background: rgba(192,57,43,0.07); }
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px; height: 7px;
   border-radius: 50%;
   background: currentColor;
-  animation: pulse-dot 1s infinite;
+  animation: dot-pulse 1.2s infinite;
 }
+@keyframes dot-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
 
-@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
-
-/* LOG BAR */
-.log-bar {
-  height: 32px;
-  background: #111111;
-  border-bottom: 1px solid #1E1E1E;
-  display: flex;
-  align-items: center;
-  padding: 0 32px;
-  gap: 12px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  overflow: hidden;
-}
-
-.log-prefix { color: #FF1744; font-weight: 700; }
-.log-line   { color: #444444; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.log-cursor { color: #FF1744; animation: blink 1s step-end infinite; }
-@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
-
-/* MAIN */
-.ax-main {
+/* ── MAIN ─────────────────────────────────────────────────── */
+.rv-main {
   flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-/* SIGNAL PANEL */
-.signal-panel {
-  width: 280px;
-  min-width: 260px;
-  border-right: 1px solid #1E1E1E;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  overflow-y: auto;
-}
-
-.sp-header {
-  padding: 20px 24px 12px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: #333333;
-  border-bottom: 1px solid #1E1E1E;
-}
-
-.signals-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.signal-card {
-  padding: 16px 24px;
-  border-bottom: 1px solid #1E1E1E;
-  transition: background 0.3s;
-}
-
-.signal-card.sig-active { background: rgba(255, 255, 255, 0.02); }
-
-.sig-label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: #444444;
-  margin-bottom: 6px;
-}
-
-.sig-val {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 22px;
-  font-weight: 700;
-  color: #FFFFFF;
-  margin-bottom: 8px;
-  transition: all 0.5s;
-}
-
-.sig-bar {
-  height: 2px;
-  background: #1E1E1E;
-  margin-bottom: 6px;
-  overflow: hidden;
-}
-
-.sig-fill {
-  height: 100%;
-  transition: width 0.8s ease;
-}
-
-.sig-trend {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  color: #333333;
-}
-
-/* Campaign Summary */
-.campaign-summary {
-  padding: 20px 24px;
-  margin-top: auto;
-  border-top: 1px solid #1E1E1E;
-}
-
-.cs-header {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: #333333;
-  margin-bottom: 12px;
-}
-
-.cs-row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 10px;
-}
-
-.cs-key {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  letter-spacing: 1px;
-  color: #333333;
-}
-
-.cs-val {
-  font-size: 13px;
-  color: #CCCCCC;
-}
-
-/* EVENT PANEL */
-.event-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.ep-header {
-  padding: 20px 32px 12px;
-  border-bottom: 1px solid #1E1E1E;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.ep-tag {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: #333333;
-}
-
-.round-counter {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: #FF1744;
-  letter-spacing: 2px;
-  animation: pulse-dot 2s infinite;
-}
-
-.event-stream {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-/* STEPS */
-.stream-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 4px;
-  opacity: 0.35;
-  transition: opacity 0.3s;
-}
-.stream-step.active { opacity: 1; }
-.stream-step.done   { opacity: 0.6; }
-
-.step-left {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  width: 20px;
-  flex-shrink: 0;
-}
-
-.step-icon {
-  width: 20px;
-  height: 20px;
-  border: 1px solid #1E1E1E;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
-  color: #555555;
-  background: #0A0A0A;
-  flex-shrink: 0;
-  font-family: 'JetBrains Mono', monospace;
+  padding: 48px 24px 80px;
+  position: relative;
+  z-index: 2;
 }
 
-.stream-step.done  .step-icon { border-color: #00FF88; color: #00FF88; }
-.stream-step.active .step-icon { border-color: #FF1744; color: #FF1744; animation: pulse-border 1s infinite; }
+/* ── CONTENT ──────────────────────────────────────────────── */
+.rv-content {
+  width: 100%;
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.rv-content.content-ready { opacity: 1; transform: none; }
 
-@keyframes pulse-border {
-  0%,100% { box-shadow: 0 0 0 0 rgba(255,23,68,0.4); }
-  50%      { box-shadow: 0 0 0 4px rgba(255,23,68,0); }
+/* ── HEADER ───────────────────────────────────────────────── */
+.rv-header { text-align: center; }
+.rv-title {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 800;
+  color: #2D1A0A;
+  letter-spacing: -1.5px;
+  line-height: 1.1;
+  margin: 0 0 14px;
+  font-family: 'Georgia', 'Times New Roman', serif;
+}
+.rv-subtitle {
+  font-size: 0.95rem;
+  color: #8A6A50;
+  line-height: 1.6;
+  margin: 0;
 }
 
-.spin-icon { animation: spin 1s linear infinite; display: inline-block; }
-@keyframes spin { 100% { transform: rotate(360deg); } }
-
-.step-line {
-  width: 1px;
-  flex: 1;
-  min-height: 24px;
-  background: #1E1E1E;
-  margin: 2px 0;
+/* ── STEP CARD ────────────────────────────────────────────── */
+.step-card {
+  width: 100%;
+  background: #FFFFFF;
+  border-radius: 18px;
+  border: 1px solid rgba(61,30,15,0.09);
+  box-shadow: 0 8px 40px rgba(61,30,15,0.1);
+  overflow: hidden;
 }
 
-.step-body { padding: 1px 0 16px; flex: 1; }
-
-.step-title {
-  font-size: 13px;
-  color: #FFFFFF;
-  font-weight: 500;
-  margin-bottom: 2px;
-}
-
-.step-sub {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: #444444;
-}
-
-.step-time {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
-  color: #333333;
-  padding-top: 2px;
-  white-space: nowrap;
-}
-
-/* EVENTS DIVIDER */
-.events-divider {
+/* Card Header */
+.sc-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin: 16px 0;
-}
-
-.events-divider::before,
-.events-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #1E1E1E;
-}
-
-.events-divider span {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: #333333;
-}
-
-/* EVENT CARDS */
-.event-card {
-  border-left: 2px solid #1E1E1E;
-  padding: 14px 16px;
-  margin-bottom: 12px;
-  background: #111111;
-  animation: slide-in 0.4s ease both;
-}
-
-.event-card.ev-positive  { border-left-color: #00FF88; }
-.event-card.ev-negative  { border-left-color: #FF1744; }
-.event-card.ev-neutral   { border-left-color: #444444; }
-.event-card.ev-mixed     { border-left-color: #FFB300; }
-
-@keyframes slide-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.ev-header {
-  display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
+  padding: 18px 22px;
+  cursor: pointer;
+  user-select: none;
 }
-
-.ev-round {
-  font-family: 'JetBrains Mono', monospace;
+.sc-header-left { display: flex; align-items: center; gap: 10px; }
+.sc-current-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2D1A0A;
+}
+.sc-step-badge {
   font-size: 10px;
-  letter-spacing: 2px;
-  color: #444444;
+  color: #BBA890;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+.sc-header-right { display: flex; align-items: center; gap: 10px; }
+.sc-pct {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2D1A0A;
+}
+.sc-toggle {
+  background: none;
+  border: none;
+  color: #BBA890;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.2s;
+}
+.sc-toggle:hover { color: #3D1E0F; }
+
+/* Steps list */
+.sc-steps {
+  border-top: 1px solid rgba(61,30,15,0.07);
 }
 
-.ev-sentiment {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  letter-spacing: 1px;
-  padding: 2px 8px;
-  border: 1px solid currentColor;
-}
-
-.sent-positive { color: #00FF88; }
-.sent-negative { color: #FF1744; }
-.sent-neutral  { color: #444444; }
-.sent-mixed    { color: #FFB300; }
-
-.ev-text {
-  font-size: 13px;
-  color: #CCCCCC;
-  line-height: 1.55;
-  margin-bottom: 6px;
-}
-
-.ev-metric {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: #555555;
-}
-
-/* GENERATING REPORT */
-.gen-report-block {
+.sc-step-row {
   display: flex;
   align-items: center;
+  padding: 14px 22px;
   gap: 16px;
-  padding: 20px;
-  background: rgba(255, 23, 68, 0.04);
-  border: 1px solid rgba(255, 23, 68, 0.2);
-  margin-top: 8px;
+  border-bottom: 1px solid rgba(61,30,15,0.05);
+  transition: background 0.2s;
+}
+.sc-step-row:last-child { border-bottom: none; }
+
+/* States */
+.scr-done    { opacity: 0.85; }
+.scr-active  { background: rgba(232,121,58,0.03); }
+.scr-pending { opacity: 0.5; }
+
+/* Number */
+.scr-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: #C4A882;
+  width: 22px;
+  flex-shrink: 0;
+  font-family: monospace;
+}
+.scr-active .scr-num { color: #E8793A; }
+.scr-done   .scr-num { color: #C4A882; }
+
+/* Body */
+.scr-body { flex: 1; min-width: 0; }
+.scr-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #5A3E28;
+  transition: color 0.3s;
+}
+.scr-active .scr-title { color: #E8793A; }
+.scr-done   .scr-title { color: #5A3E28; }
+.scr-sub {
+  font-size: 11px;
+  color: #BBA890;
+  margin-top: 2px;
 }
 
-.gen-dots {
+/* Right state */
+.scr-right { flex-shrink: 0; display: flex; align-items: center; }
+.scr-check { color: #28C840; }
+.scr-pct-active {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2D1A0A;
+  font-family: monospace;
+  min-width: 36px;
+  text-align: right;
+}
+.scr-zero {
+  font-size: 13px;
+  color: #D4C0AA;
+  font-family: monospace;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── LOG TICKER ───────────────────────────────────────────── */
+.rv-log {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #8A6A50;
+  font-family: monospace;
 }
-
-.gen-dots span {
-  width: 6px;
-  height: 6px;
+.log-dot {
+  width: 6px; height: 6px;
   border-radius: 50%;
-  background: #FF1744;
-  animation: gen-bounce 1.2s infinite;
+  background: #E8793A;
+  flex-shrink: 0;
+  animation: dot-pulse 1.2s infinite;
 }
+.log-text { flex: 1; }
+.log-cursor { animation: blink 1s step-end infinite; color: #E8793A; }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
 
-.gen-dots span:nth-child(2) { animation-delay: 0.2s; }
-.gen-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes gen-bounce {
-  0%,80%,100% { transform: scale(0.8); opacity: 0.4; }
-  40%         { transform: scale(1.2); opacity: 1; }
-}
-
-.gen-text {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #FF1744;
-}
-
-/* ERROR */
-.ax-error {
-  margin: 16px 32px;
-  background: rgba(255, 23, 68, 0.08);
-  border: 1px solid rgba(255, 23, 68, 0.3);
+/* ── ERROR ────────────────────────────────────────────────── */
+.rv-error {
+  width: 100%;
+  background: rgba(192,57,43,0.08);
+  border: 1px solid rgba(192,57,43,0.25);
+  border-radius: 12px;
   padding: 14px 18px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  color: #FF1744;
+  font-size: 13px;
+  color: #c0392b;
   display: flex;
   align-items: center;
   gap: 12px;
 }
-
 .retry-btn {
   margin-left: auto;
-  background: #FF1744;
+  background: #E8793A;
   border: none;
-  color: #FFFFFF;
-  padding: 6px 16px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 18px;
+  border-radius: 20px;
   cursor: pointer;
-  letter-spacing: 1px;
+  transition: background 0.2s;
 }
-
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: #0A0A0A; }
-::-webkit-scrollbar-thumb { background: #1E1E1E; }
+.retry-btn:hover { background: #d4622a; }
 </style>
