@@ -9,6 +9,8 @@ Every action costs a fixed CU rate reflecting real API cost.
 
 import os
 import logging
+import hashlib
+import uuid
 from supabase import create_client, Client
 
 logger = logging.getLogger("axonic.compute_tracker")
@@ -54,12 +56,36 @@ def _db() -> Client:
 
 # ── Public helpers ────────────────────────────────────────────────────────────
 
+def _id_to_uuid(user_id: str) -> str:
+    """Convert any string ID (like Clerk's user_...) to a stable UUID string."""
+    if not user_id: return str(uuid.uuid4())
+    # If it's already a UUID, just return it
+    if len(user_id) == 36 and user_id.count('-') == 4:
+        return user_id
+    # Otherwise, hash it stably
+    hash_obj = hashlib.sha1(user_id.encode('utf-8'))
+    return str(uuid.UUID(hash_obj.hexdigest()[:32]))
+
+
 def get_available_cu(user_id: str) -> int:
-    """Return how many Compute Units the user currently has."""
+    """Return how many Compute Units the user currently has. Auto-provisions new users."""
+    db_id = _id_to_uuid(user_id)
     try:
-        res = _db().table("users").select("compute_units").eq("id", user_id).single().execute()
+        res = _db().table("users").select("compute_units").eq("id", db_id).single().execute()
         return res.data.get("compute_units", 0) if res.data else 0
     except Exception as exc:
+        # Check if error is 'PGRST116' (No rows found)
+        if hasattr(exc, 'code') and exc.code == 'PGRST116':
+            logger.info(f"Auto-provisioning free credits for new user {user_id}")
+            create_user_with_free_credits(user_id, f"{user_id}@temp.axonic.ai", "New User")
+            return FREE_SIGNUP_CU
+        
+        # Check string representation for some client versions
+        if "PGRST116" in str(exc) or "contains 0 rows" in str(exc):
+            logger.info(f"Auto-provisioning free credits for new user {user_id}")
+            create_user_with_free_credits(user_id, f"{user_id}@temp.axonic.ai", "New User")
+            return FREE_SIGNUP_CU
+
         logger.error(f"get_available_cu failed for {user_id}: {exc}")
         return 0
 
@@ -77,8 +103,9 @@ def can_afford(user_id: str, action: str) -> bool:
 
 def get_user_tier(user_id: str) -> str:
     """Return 'free' or 'paid'."""
+    db_id = _id_to_uuid(user_id)
     try:
-        res = _db().table("users").select("plan").eq("id", user_id).single().execute()
+        res = _db().table("users").select("plan").eq("id", db_id).single().execute()
         return res.data.get("plan", "free") if res.data else "free"
     except Exception as exc:
         logger.error(f"get_user_tier failed for {user_id}: {exc}")
@@ -112,11 +139,12 @@ def deduct_and_log(
         }
 
     new_balance = current - cu_cost
+    db_id = _id_to_uuid(user_id)
 
     try:
-        _db().table("users").update({"compute_units": new_balance}).eq("id", user_id).execute()
+        _db().table("users").update({"compute_units": new_balance}).eq("id", db_id).execute()
         _db().table("usage_log").insert({
-            "user_id":       user_id,
+            "user_id":       db_id,
             "simulation_id": simulation_id,
             "action":        action,
             "model_used":    model,
@@ -158,15 +186,16 @@ def add_compute_units(user_id: str, pack: str, payment_id: str) -> dict:
 
     current    = get_available_cu(user_id)
     new_total  = current + pack_info["cu"]
+    db_id = _id_to_uuid(user_id)
 
     try:
         _db().table("users").update({
             "compute_units": new_total,
             "plan":          "paid",
-        }).eq("id", user_id).execute()
+        }).eq("id", db_id).execute()
 
         _db().table("credit_purchases").insert({
-            "user_id":      user_id,
+            "user_id":      db_id,
             "pack":         pack,
             "compute_units": pack_info["cu"],
             "price_inr":    pack_info["price_inr"],
@@ -189,11 +218,11 @@ def add_compute_units(user_id: str, pack: str, payment_id: str) -> dict:
 def create_user_with_free_credits(user_id: str, email: str, name: str = "") -> dict:
     """
     Register a new user with the free 3-credit (300 CU) signup bonus.
-    Call this after email verification.
     """
+    db_id = _id_to_uuid(user_id)
     try:
         _db().table("users").insert({
-            "id":            user_id,
+            "id":            db_id,
             "email":         email,
             "name":          name,
             "compute_units": FREE_SIGNUP_CU,
@@ -201,7 +230,7 @@ def create_user_with_free_credits(user_id: str, email: str, name: str = "") -> d
         }).execute()
 
         _db().table("usage_log").insert({
-            "user_id":       user_id,
+            "user_id":       db_id,
             "action":        "signup_bonus",
             "model_used":    "system",
             "compute_units": -FREE_SIGNUP_CU,   # negative = granted, not spent
