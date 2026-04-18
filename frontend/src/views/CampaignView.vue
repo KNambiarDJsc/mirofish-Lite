@@ -12,6 +12,7 @@
           {{ creditsDisplay }} credits
         </div>
         <a href="https://razorpay.com" class="topup-link" target="_blank">Top up ↗</a>
+        <UserButton after-sign-out-url="/" />
       </div>
     </nav>
 
@@ -118,6 +119,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { saveCampaign, getBalance, getUserId } from '../api/mvp.js'
+import { UserButton } from '@clerk/vue'
 
 const router     = useRouter()
 const fileInput  = ref(null)

@@ -13,9 +13,12 @@
         <span class="phase-sep">——</span>
         <span class="phase" :class="{ active: phase >= 2 }">03 Report</span>
       </div>
-      <div class="nav-status" :class="statusClass">
-        <span class="status-dot"></span>
-        {{ statusText }}
+      <div class="nav-right-group">
+        <div class="nav-status" :class="statusClass">
+          <span class="status-dot"></span>
+          {{ statusText }}
+        </div>
+        <UserButton after-sign-out-url="/" />
       </div>
     </nav>
 
@@ -107,6 +110,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { loadCampaign, runSimulation, generateReport, saveSimResult } from '../api/mvp.js'
+import { UserButton } from '@clerk/vue'
 
 const router   = useRouter()
 const phase    = ref(1)
@@ -314,6 +318,12 @@ onMounted(() => {
 .phase.done   { color: rgba(61,30,15,0.5); }
 .phase.active { color: #E8793A; font-weight: 700; }
 .phase-sep    { color: rgba(61,30,15,0.2); font-size: 10px; }
+
+.nav-right-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
 .nav-status {
   display: flex;

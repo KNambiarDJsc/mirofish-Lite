@@ -18,8 +18,16 @@
         <a href="#cases"   class="nav-link" @click.prevent="scrollTo('cases')">Use Cases</a>
       </div>
       <div class="nav-right">
-        <button class="nav-login"  @click="$router.push('/start')">Log in</button>
-        <button class="nav-signup" @click="$router.push('/start')">Sign up</button>
+        <!-- If user is already signed in, show avatar + go to app -->
+        <template v-if="isSignedIn">
+          <button class="nav-signup" @click="$router.push('/start')">Open App →</button>
+          <UserButton after-sign-out-url="/" />
+        </template>
+        <!-- Guest -->
+        <template v-else>
+          <button class="nav-login"  @click="$router.push('/sign-in')">Log in</button>
+          <button class="nav-signup" @click="$router.push('/sign-up')">Sign up</button>
+        </template>
       </div>
     </nav>
 
@@ -414,6 +422,9 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuth, UserButton } from '@clerk/vue'
+
+const { isSignedIn } = useAuth()
 
 const router = useRouter()
 
@@ -481,14 +492,14 @@ const typeNext = () => {
 // ── Input / CTA Interactions ──────────────────────────────────
 const handleInputClick = () => {
   inputActive.value = true
-  router.push('/start')
+  router.push(isSignedIn.value ? '/start' : '/sign-up')
 }
 
 const handleRunClick = () => {
   btnFiring.value = true
   setTimeout(() => {
     btnFiring.value = false
-    router.push('/start')
+    router.push(isSignedIn.value ? '/start' : '/sign-up')
   }, 380)
 }
 
