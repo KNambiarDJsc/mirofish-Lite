@@ -1,6 +1,8 @@
 """
-本体生成服务
-接口1：分析文本内容，生成适合社会模拟的实体和关系类型定义
+Ontology Generator — AXonic
+Indian marketing campaign ontology with consumer-segment, influencer-hierarchy,
+peer/family-group, and private-network (FORWARDS_TO / VALIDATES / DOUBTS /
+RECOMMENDS) edge types.
 """
 
 import json
@@ -8,446 +10,300 @@ from typing import Dict, Any, List, Optional
 from ..utils.llm_client import LLMClient
 
 
-# 本体生成的系统提示词
-ONTOLOGY_SYSTEM_PROMPT = """你是一个专业的知识图谱本体设计专家。你的任务是分析给定的文本内容和模拟需求，设计适合**社交媒体舆论模拟**的实体类型和关系类型。
+ONTOLOGY_SYSTEM_PROMPT = """You are an expert ontology designer for Indian marketing campaign simulation.
 
-**重要：你必须输出有效的JSON格式数据，不要输出任何其他内容。**
+Output ONLY valid JSON — no markdown, no commentary.
 
-## 核心任务背景
+## Purpose
+Design entities + edges that simulate how Indian audiences (Tier1/2/3, varied SEC, varied language) react to a marketing campaign — including private WhatsApp/peer-network amplification, not just public social media.
 
-我们正在构建一个**社交媒体舆论模拟系统**。在这个系统中：
-- 每个实体都是一个可以在社交媒体上发声、互动、传播信息的"账号"或"主体"
-- 实体之间会相互影响、转发、评论、回应
-- 我们需要模拟舆论事件中各方的反应和信息传播路径
+## Valid entity types (real actors — can post/react)
 
-因此，**实体必须是现实中真实存在的、可以在社媒上发声和互动的主体**：
+**Consumer segments (behavior-aware):**
+- Tier1Consumer / Tier2Consumer / Tier3Consumer (geography)
+- HNIConsumer / MassConsumer / AspirationalConsumer (income/intent)
+- Student / Parent / HomemakerConsumer / UrbanProfessional (life stage)
+- ConsumerSegment (abstract cluster with shared behaviour — use when simulating group-level reaction)
 
-**可以是**：
-- 具体的个人（公众人物、当事人、意见领袖、专家学者、普通人）
-- 公司、企业（包括其官方账号）
-- 组织机构（大学、协会、NGO、工会等）
-- 政府部门、监管机构
-- 媒体机构（报纸、电视台、自媒体、网站）
-- 社交媒体平台本身
-- 特定群体代表（如校友会、粉丝团、维权群体等）
+**Influencer hierarchy (India runs on this):**
+- NanoInfluencer / MicroInfluencer / MegaCreator
+- Reviewer / FinfluencerCreator / FoodCreator / AutoInfluencer / EducationInfluencer
+- RegionalInfluencer
 
-**不可以是**：
-- 抽象概念（如"舆论"、"情绪"、"趋势"）
-- 主题/话题（如"学术诚信"、"教育改革"）
-- 观点/态度（如"支持方"、"反对方"）
+**Networks (private amplification — critical for India):**
+- PeerGroup    (friend circles — validate or doubt)
+- FamilyGroup  (WhatsApp family groups — where final decisions happen)
+- MediaAmplifier (any entity whose role is to amplify, regardless of domain)
 
-## 输出格式
+**Brands / retail / media / regulators:**
+- Brand / CompetitorBrand
+- MediaOutlet / RegionalMediaOutlet / FinMediaOutlet / EducationMediaOutlet
+- Regulator / ASCIRegulator / SEBIRegulator / FSSAIRegulator
+- Retailer / QuickCommercePlatform / ModernTradeRetailer / KiranaRetailer
+- Platform / Bank / University / Agency
 
-请输出JSON格式，包含以下结构：
+## Invalid (abstract — do NOT use)
+"Sentiment", "Trend", "Virality", "Engagement", "Youth opinion", "Market demand", "Backlash"
+
+## Output
 
 ```json
 {
     "entity_types": [
         {
-            "name": "实体类型名称（英文，PascalCase）",
-            "description": "简短描述（英文，不超过100字符）",
+            "name": "EntityType (PascalCase)",
+            "description": "<100 char description",
             "attributes": [
-                {
-                    "name": "属性名（英文，snake_case）",
-                    "type": "text",
-                    "description": "属性描述"
-                }
+                {"name": "attr (snake_case)", "type": "text", "description": "..."}
             ],
-            "examples": ["示例实体1", "示例实体2"]
+            "examples": ["ex1", "ex2"]
         }
     ],
     "edge_types": [
         {
-            "name": "关系类型名称（英文，UPPER_SNAKE_CASE）",
-            "description": "简短描述（英文，不超过100字符）",
-            "source_targets": [
-                {"source": "源实体类型", "target": "目标实体类型"}
-            ],
+            "name": "EDGE_NAME (UPPER_SNAKE_CASE)",
+            "description": "<100 char",
+            "source_targets": [{"source": "Type1", "target": "Type2"}],
             "attributes": []
         }
     ],
-    "analysis_summary": "对文本内容的简要分析说明（中文）"
+    "analysis_summary": "2–3 sentences"
 }
 ```
 
-## 设计指南（极其重要！）
+## Rules
 
-### 1. 实体类型设计 - 必须严格遵守
+### Entity types — EXACTLY 10
+1. First 8 = campaign-specific Indian marketing entities
+2. Last 2 = fallbacks `Person`, `Organization`
 
-**数量要求：必须正好10个实体类型**
+### Edge types — 6 to 10, MUST include at least ONE private-network edge
+Required Indian-market edges (use whichever fit the campaign):
 
-**层次结构要求（必须同时包含具体类型和兜底类型）**：
+- PROMOTES / ENDORSES                 — Brand/Creator → audience
+- REVIEWS                             — Reviewer → Product/Brand
+- RECOMMENDS_TO                       — Consumer/PeerGroup → Consumer (peer validation)
+- VALIDATES                           — PeerGroup/FamilyGroup → Brand/Product (social proof)
+- DOUBTS                              — Consumer/Peer → Brand (skepticism, trust gap)
+- COMPETES_WITH / COMPARES_TO         — Brand ↔ CompetitorBrand
+- AMPLIFIES                           — Media/Influencer/MediaAmplifier → Brand
+- FORWARDS_TO                         — Consumer/FamilyGroup → Consumer (WhatsApp virality — HIGHEST impact edge in India)
+- COMPLAINS_ABOUT                     — Consumer → Brand
+- DISTRIBUTES                         — Retailer → Brand
+- REGULATES                           — Regulator → Brand
+- TARGETS                             — Brand → ConsumerSegment
 
-你的10个实体类型必须包含以下层次：
+At least ONE of FORWARDS_TO / VALIDATES / DOUBTS / RECOMMENDS_TO must be present — these model the private network that drives Indian purchase decisions.
 
-A. **兜底类型（必须包含，放在列表最后2个）**：
-   - `Person`: 任何自然人个体的兜底类型。当一个人不属于其他更具体的人物类型时，归入此类。
-   - `Organization`: 任何组织机构的兜底类型。当一个组织不属于其他更具体的组织类型时，归入此类。
-
-B. **具体类型（8个，根据文本内容设计）**：
-   - 针对文本中出现的主要角色，设计更具体的类型
-   - 例如：如果文本涉及学术事件，可以有 `Student`, `Professor`, `University`
-   - 例如：如果文本涉及商业事件，可以有 `Company`, `CEO`, `Employee`
-
-**为什么需要兜底类型**：
-- 文本中会出现各种人物，如"中小学教师"、"路人甲"、"某位网友"
-- 如果没有专门的类型匹配，他们应该被归入 `Person`
-- 同理，小型组织、临时团体等应该归入 `Organization`
-
-**具体类型的设计原则**：
-- 从文本中识别出高频出现或关键的角色类型
-- 每个具体类型应该有明确的边界，避免重叠
-- description 必须清晰说明这个类型和兜底类型的区别
-
-### 2. 关系类型设计
-
-- 数量：6-10个
-- 关系应该反映社媒互动中的真实联系
-- 确保关系的 source_targets 涵盖你定义的实体类型
-
-### 3. 属性设计
-
-- 每个实体类型1-3个关键属性
-- **注意**：属性名不能使用 `name`、`uuid`、`group_id`、`created_at`、`summary`（这些是系统保留字）
-- 推荐使用：`full_name`, `title`, `role`, `position`, `location`, `description` 等
-
-## 实体类型参考
-
-**个人类（具体）**：
-- Student: 学生
-- Professor: 教授/学者
-- Journalist: 记者
-- Celebrity: 明星/网红
-- Executive: 高管
-- Official: 政府官员
-- Lawyer: 律师
-- Doctor: 医生
-
-**个人类（兜底）**：
-- Person: 任何自然人（不属于上述具体类型时使用）
-
-**组织类（具体）**：
-- University: 高校
-- Company: 公司企业
-- GovernmentAgency: 政府机构
-- MediaOutlet: 媒体机构
-- Hospital: 医院
-- School: 中小学
-- NGO: 非政府组织
-
-**组织类（兜底）**：
-- Organization: 任何组织机构（不属于上述具体类型时使用）
-
-## 关系类型参考
-
-- WORKS_FOR: 工作于
-- STUDIES_AT: 就读于
-- AFFILIATED_WITH: 隶属于
-- REPRESENTS: 代表
-- REGULATES: 监管
-- REPORTS_ON: 报道
-- COMMENTS_ON: 评论
-- RESPONDS_TO: 回应
-- SUPPORTS: 支持
-- OPPOSES: 反对
-- COLLABORATES_WITH: 合作
-- COMPETES_WITH: 竞争
+### Attributes
+1–3 per entity. Reserved (DO NOT USE): `name`, `uuid`, `group_id`, `created_at`, `summary`.
+Use: `full_name`, `brand_name`, `tier`, `sec`, `primary_language`, `city`, `role`, `follower_count`, `specialization`, `org_type`, `group_size`, `relation_type`.
 """
 
 
 class OntologyGenerator:
-    """
-    本体生成器
-    分析文本内容，生成实体和关系类型定义
-    """
-    
+    MAX_TEXT_LENGTH_FOR_LLM = 2000
+
     def __init__(self, llm_client: Optional[LLMClient] = None):
         self.llm_client = llm_client or LLMClient()
-    
+
     def generate(
         self,
         document_texts: List[str],
         simulation_requirement: str,
-        additional_context: Optional[str] = None
+        additional_context: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        生成本体定义
-        
-        Args:
-            document_texts: 文档文本列表
-            simulation_requirement: 模拟需求描述
-            additional_context: 额外上下文
-            
-        Returns:
-            本体定义（entity_types, edge_types等）
-        """
-        # 构建用户消息
         user_message = self._build_user_message(
-            document_texts, 
-            simulation_requirement,
-            additional_context
+            document_texts, simulation_requirement, additional_context
         )
-        
         messages = [
             {"role": "system", "content": ONTOLOGY_SYSTEM_PROMPT},
-            {"role": "user", "content": user_message}
+            {"role": "user", "content": user_message},
         ]
-        
-        # 调用LLM
         result = self.llm_client.chat_json(
-            messages=messages,
-            temperature=0.3,
-            max_tokens=4096
+            messages=messages, temperature=0.3, max_tokens=4096,
         )
-        
-        # 验证和后处理
-        result = self._validate_and_process(result)
-        
-        return result
-    
-    # 传给 LLM 的文本最大长度（Gemini Free Tier 优化）
-    MAX_TEXT_LENGTH_FOR_LLM = 2000
-    
-    def _build_user_message(
-        self,
-        document_texts: List[str],
-        simulation_requirement: str,
-        additional_context: Optional[str]
-    ) -> str:
-        """构建用户消息"""
-        
-        # 合并文本
-        combined_text = "\n\n---\n\n".join(document_texts)
-        original_length = len(combined_text)
-        
-        # 如果文本超过5万字，截断（仅影响传给LLM的内容，不影响图谱构建）
-        if len(combined_text) > self.MAX_TEXT_LENGTH_FOR_LLM:
-            combined_text = combined_text[:self.MAX_TEXT_LENGTH_FOR_LLM]
-            combined_text += f"\n\n...(原文共{original_length}字，已截取前{self.MAX_TEXT_LENGTH_FOR_LLM}字用于本体分析)..."
-        
-        message = f"""## 模拟需求
+        return self._validate_and_process(result)
 
+    def _build_user_message(
+        self, document_texts, simulation_requirement, additional_context,
+    ) -> str:
+        combined = "\n\n---\n\n".join(document_texts)
+        original_len = len(combined)
+        if len(combined) > self.MAX_TEXT_LENGTH_FOR_LLM:
+            combined = combined[: self.MAX_TEXT_LENGTH_FOR_LLM]
+            combined += f"\n\n...(truncated — original {original_len} chars)..."
+
+        msg = f"""## Campaign Requirement
 {simulation_requirement}
 
-## 文档内容
-
-{combined_text}
+## Strategy Document
+{combined}
 """
-        
         if additional_context:
-            message += f"""
-## 额外说明
+            msg += f"\n## Additional Context\n{additional_context}\n"
 
-{additional_context}
-"""
-        
-        message += """
-请根据以上内容，设计适合社会舆论模拟的实体类型和关系类型。
+        msg += """
+Design entity + edge types for simulating Indian audience reaction.
 
-**必须遵守的规则**：
-1. 必须正好输出10个实体类型
-2. 最后2个必须是兜底类型：Person（个人兜底）和 Organization（组织兜底）
-3. 前8个是根据文本内容设计的具体类型
-4. 所有实体类型必须是现实中可以发声的主体，不能是抽象概念
-5. 属性名不能使用 name、uuid、group_id 等保留字，用 full_name、org_name 等替代
+MANDATORY:
+1. EXACTLY 10 entity types — last 2 are `Person` and `Organization` (fallbacks)
+2. First 8 are campaign-specific Indian marketing entities (consumer segments, influencer hierarchy, brand/media/retail)
+3. 6–10 edge types, at least ONE of FORWARDS_TO / VALIDATES / DOUBTS / RECOMMENDS_TO
+4. Reserved words — NEVER use `name`, `uuid`, `group_id` as attributes; use `full_name`, `brand_name`, `tier`, `relation_type`, etc.
+5. All text in English.
 """
-        
-        return message
-    
+        return msg
+
     def _validate_and_process(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        """验证和后处理结果"""
-        
-        # 确保必要字段存在
-        if "entity_types" not in result:
-            result["entity_types"] = []
-        if "edge_types" not in result:
-            result["edge_types"] = []
-        if "analysis_summary" not in result:
-            result["analysis_summary"] = ""
-        
-        # 验证实体类型
+        result.setdefault("entity_types", [])
+        result.setdefault("edge_types", [])
+        result.setdefault("analysis_summary", "")
+
         for entity in result["entity_types"]:
-            if "attributes" not in entity:
-                entity["attributes"] = []
-            if "examples" not in entity:
-                entity["examples"] = []
-            # 确保description不超过100字符
+            entity.setdefault("attributes", [])
+            entity.setdefault("examples", [])
             if len(entity.get("description", "")) > 100:
                 entity["description"] = entity["description"][:97] + "..."
-        
-        # 验证关系类型
+
         for edge in result["edge_types"]:
-            if "source_targets" not in edge:
-                edge["source_targets"] = []
-            if "attributes" not in edge:
-                edge["attributes"] = []
+            edge.setdefault("source_targets", [])
+            edge.setdefault("attributes", [])
             if len(edge.get("description", "")) > 100:
                 edge["description"] = edge["description"][:97] + "..."
-        
-        # Zep API 限制：最多 10 个自定义实体类型，最多 10 个自定义边类型
-        MAX_ENTITY_TYPES = 10
-        MAX_EDGE_TYPES = 10
-        
-        # 兜底类型定义
+
+        MAX_ENTITIES, MAX_EDGES = 10, 10
+
         person_fallback = {
             "name": "Person",
-            "description": "Any individual person not fitting other specific person types.",
+            "description": "Any Indian individual not fitting a more specific consumer type.",
             "attributes": [
-                {"name": "full_name", "type": "text", "description": "Full name of the person"},
-                {"name": "role", "type": "text", "description": "Role or occupation"}
+                {"name": "full_name", "type": "text", "description": "Full name"},
+                {"name": "tier", "type": "text", "description": "Tier1/Tier2/Tier3 by city"},
+                {"name": "primary_language", "type": "text", "description": "Primary language"},
             ],
-            "examples": ["ordinary citizen", "anonymous netizen"]
+            "examples": ["anonymous urban consumer", "first-time online buyer"],
         }
-        
         organization_fallback = {
             "name": "Organization",
-            "description": "Any organization not fitting other specific organization types.",
+            "description": "Any organization not fitting a more specific organization type.",
             "attributes": [
-                {"name": "org_name", "type": "text", "description": "Name of the organization"},
-                {"name": "org_type", "type": "text", "description": "Type of organization"}
+                {"name": "org_name", "type": "text", "description": "Name"},
+                {"name": "org_type", "type": "text", "description": "Brand/Agency/Platform/Retailer/Media/Regulator"},
             ],
-            "examples": ["small business", "community group"]
+            "examples": ["small D2C brand", "local distribution partner"],
         }
-        
-        # 检查是否已有兜底类型
-        entity_names = {e["name"] for e in result["entity_types"]}
-        has_person = "Person" in entity_names
-        has_organization = "Organization" in entity_names
-        
-        # 需要添加的兜底类型
-        fallbacks_to_add = []
-        if not has_person:
-            fallbacks_to_add.append(person_fallback)
-        if not has_organization:
-            fallbacks_to_add.append(organization_fallback)
-        
-        if fallbacks_to_add:
-            current_count = len(result["entity_types"])
-            needed_slots = len(fallbacks_to_add)
-            
-            # 如果添加后会超过 10 个，需要移除一些现有类型
-            if current_count + needed_slots > MAX_ENTITY_TYPES:
-                # 计算需要移除多少个
-                to_remove = current_count + needed_slots - MAX_ENTITY_TYPES
-                # 从末尾移除（保留前面更重要的具体类型）
-                result["entity_types"] = result["entity_types"][:-to_remove]
-            
-            # 添加兜底类型
-            result["entity_types"].extend(fallbacks_to_add)
-        
-        # 最终确保不超过限制（防御性编程）
-        if len(result["entity_types"]) > MAX_ENTITY_TYPES:
-            result["entity_types"] = result["entity_types"][:MAX_ENTITY_TYPES]
-        
-        if len(result["edge_types"]) > MAX_EDGE_TYPES:
-            result["edge_types"] = result["edge_types"][:MAX_EDGE_TYPES]
-        
+
+        names = {e["name"] for e in result["entity_types"]}
+        to_add = []
+        if "Person" not in names:
+            to_add.append(person_fallback)
+        if "Organization" not in names:
+            to_add.append(organization_fallback)
+
+        if to_add:
+            current = len(result["entity_types"])
+            if current + len(to_add) > MAX_ENTITIES:
+                result["entity_types"] = result["entity_types"][: MAX_ENTITIES - len(to_add)]
+            result["entity_types"].extend(to_add)
+
+        result["entity_types"] = result["entity_types"][:MAX_ENTITIES]
+        result["edge_types"] = result["edge_types"][:MAX_EDGES]
+
+        # Guarantee at least one private-network edge
+        edge_names = {e["name"] for e in result["edge_types"]}
+        private_net_edges = {"FORWARDS_TO", "VALIDATES", "DOUBTS", "RECOMMENDS_TO"}
+        if not (edge_names & private_net_edges) and len(result["edge_types"]) < MAX_EDGES:
+            result["edge_types"].append({
+                "name": "FORWARDS_TO",
+                "description": "Private-network forward (WhatsApp/peer) — virality backbone in India.",
+                "source_targets": [
+                    {"source": "Person", "target": "Person"},
+                    {"source": "FamilyGroup", "target": "Person"},
+                ],
+                "attributes": [
+                    {"name": "trust_boost", "type": "text", "description": "Trust added via private forward"}
+                ],
+            })
+
         return result
-    
+
     def generate_python_code(self, ontology: Dict[str, Any]) -> str:
-        """
-        将本体定义转换为Python代码（类似ontology.py）
-        
-        Args:
-            ontology: 本体定义
-            
-        Returns:
-            Python代码字符串
-        """
-        code_lines = [
+        """Generate Zep-compatible Python module from ontology dict."""
+        lines = [
             '"""',
-            '自定义实体类型定义',
-            '由MiroFish自动生成，用于社会舆论模拟',
+            'Custom entity type definitions',
+            'Auto-generated by AXonic for Indian marketing campaign simulation',
             '"""',
             '',
             'from pydantic import Field',
             'from zep_cloud.external_clients.ontology import EntityModel, EntityText, EdgeModel',
             '',
             '',
-            '# ============== 实体类型定义 ==============',
+            '# ============== Entity type definitions ==============',
             '',
         ]
-        
-        # 生成实体类型
+
         for entity in ontology.get("entity_types", []):
             name = entity["name"]
             desc = entity.get("description", f"A {name} entity.")
-            
-            code_lines.append(f'class {name}(EntityModel):')
-            code_lines.append(f'    """{desc}"""')
-            
+            lines.append(f'class {name}(EntityModel):')
+            lines.append(f'    """{desc}"""')
             attrs = entity.get("attributes", [])
             if attrs:
                 for attr in attrs:
-                    attr_name = attr["name"]
-                    attr_desc = attr.get("description", attr_name)
-                    code_lines.append(f'    {attr_name}: EntityText = Field(')
-                    code_lines.append(f'        description="{attr_desc}",')
-                    code_lines.append(f'        default=None')
-                    code_lines.append(f'    )')
+                    lines.append(f'    {attr["name"]}: EntityText = Field(')
+                    lines.append(f'        description="{attr.get("description", attr["name"])}",')
+                    lines.append(f'        default=None')
+                    lines.append(f'    )')
             else:
-                code_lines.append('    pass')
-            
-            code_lines.append('')
-            code_lines.append('')
-        
-        code_lines.append('# ============== 关系类型定义 ==============')
-        code_lines.append('')
-        
-        # 生成关系类型
+                lines.append('    pass')
+            lines.append('')
+            lines.append('')
+
+        lines.append('# ============== Relationship type definitions ==============')
+        lines.append('')
+
         for edge in ontology.get("edge_types", []):
             name = edge["name"]
-            # 转换为PascalCase类名
-            class_name = ''.join(word.capitalize() for word in name.split('_'))
+            class_name = ''.join(w.capitalize() for w in name.split('_'))
             desc = edge.get("description", f"A {name} relationship.")
-            
-            code_lines.append(f'class {class_name}(EdgeModel):')
-            code_lines.append(f'    """{desc}"""')
-            
+            lines.append(f'class {class_name}(EdgeModel):')
+            lines.append(f'    """{desc}"""')
             attrs = edge.get("attributes", [])
             if attrs:
                 for attr in attrs:
-                    attr_name = attr["name"]
-                    attr_desc = attr.get("description", attr_name)
-                    code_lines.append(f'    {attr_name}: EntityText = Field(')
-                    code_lines.append(f'        description="{attr_desc}",')
-                    code_lines.append(f'        default=None')
-                    code_lines.append(f'    )')
+                    lines.append(f'    {attr["name"]}: EntityText = Field(')
+                    lines.append(f'        description="{attr.get("description", attr["name"])}",')
+                    lines.append(f'        default=None')
+                    lines.append(f'    )')
             else:
-                code_lines.append('    pass')
-            
-            code_lines.append('')
-            code_lines.append('')
-        
-        # 生成类型字典
-        code_lines.append('# ============== 类型配置 ==============')
-        code_lines.append('')
-        code_lines.append('ENTITY_TYPES = {')
-        for entity in ontology.get("entity_types", []):
-            name = entity["name"]
-            code_lines.append(f'    "{name}": {name},')
-        code_lines.append('}')
-        code_lines.append('')
-        code_lines.append('EDGE_TYPES = {')
-        for edge in ontology.get("edge_types", []):
-            name = edge["name"]
-            class_name = ''.join(word.capitalize() for word in name.split('_'))
-            code_lines.append(f'    "{name}": {class_name},')
-        code_lines.append('}')
-        code_lines.append('')
-        
-        # 生成边的source_targets映射
-        code_lines.append('EDGE_SOURCE_TARGETS = {')
-        for edge in ontology.get("edge_types", []):
-            name = edge["name"]
-            source_targets = edge.get("source_targets", [])
-            if source_targets:
-                st_list = ', '.join([
-                    f'{{"source": "{st.get("source", "Entity")}", "target": "{st.get("target", "Entity")}"}}'
-                    for st in source_targets
-                ])
-                code_lines.append(f'    "{name}": [{st_list}],')
-        code_lines.append('}')
-        
-        return '\n'.join(code_lines)
+                lines.append('    pass')
+            lines.append('')
+            lines.append('')
 
+        lines.append('# ============== Type configuration ==============')
+        lines.append('')
+        lines.append('ENTITY_TYPES = {')
+        for entity in ontology.get("entity_types", []):
+            lines.append(f'    "{entity["name"]}": {entity["name"]},')
+        lines.append('}')
+        lines.append('')
+        lines.append('EDGE_TYPES = {')
+        for edge in ontology.get("edge_types", []):
+            class_name = ''.join(w.capitalize() for w in edge["name"].split('_'))
+            lines.append(f'    "{edge["name"]}": {class_name},')
+        lines.append('}')
+        lines.append('')
+        lines.append('EDGE_SOURCE_TARGETS = {')
+        for edge in ontology.get("edge_types", []):
+            sts = edge.get("source_targets", [])
+            if sts:
+                st_str = ', '.join([
+                    f'{{"source": "{st.get("source", "Entity")}", "target": "{st.get("target", "Entity")}"}}'
+                    for st in sts
+                ])
+                lines.append(f'    "{edge["name"]}": [{st_str}],')
+        lines.append('}')
+
+        return '\n'.join(lines)
