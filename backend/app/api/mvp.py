@@ -9,6 +9,7 @@ POST /api/mvp/purchase  → Credit user after Razorpay payment
 GET  /api/mvp/balance   → Current CU balance
 """
 
+import os
 import uuid
 import logging
 
@@ -27,6 +28,7 @@ from ..services.compute_tracker import (
 
 logger = logging.getLogger("axonic.api.mvp")
 mvp_bp = Blueprint("mvp", __name__)
+GROQ_MODEL_LABEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -222,9 +224,3 @@ def get_balance():
         },
     })
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Internal label for logs (not imported from env at module level)
-# ─────────────────────────────────────────────────────────────────────────────
-import os
-GROQ_MODEL_LABEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")

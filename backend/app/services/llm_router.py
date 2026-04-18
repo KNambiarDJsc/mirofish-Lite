@@ -16,7 +16,8 @@ import re
 import logging
 
 from groq import Groq
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 logger = logging.getLogger("axonic.llm_router")
 
@@ -25,8 +26,8 @@ GROQ_MODEL   = os.environ.get("GROQ_MODEL",   "llama-3.3-70b-versatile")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
 # ── Lazy-initialised clients ─────────────────────────────────────────────────
-_groq_client       = None
-_gemini_configured = False
+_groq_client    = None
+_gemini_client  = None
 
 
 def _get_groq() -> Groq:
@@ -39,14 +40,14 @@ def _get_groq() -> Groq:
     return _groq_client
 
 
-def _configure_gemini():
-    global _gemini_configured
-    if not _gemini_configured:
+def _get_gemini() -> genai.Client:
+    global _gemini_client
+    if _gemini_client is None:
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("LLM_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY is not set in .env")
-        genai.configure(api_key=api_key)
-        _gemini_configured = True
+        _gemini_client = genai.Client(api_key=api_key)
+    return _gemini_client
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -321,7 +322,7 @@ def generate_report(campaign: dict, events: list, tier: str = "free") -> tuple:
     Paid tier gets higher token budget + deeper prompt sections.
     Returns (report_dict, usage_dict).
     """
-    _configure_gemini()
+    client = _get_gemini()
 
     is_paid    = (tier == "paid")
     max_tokens = 3000 if is_paid else 1600
@@ -329,17 +330,17 @@ def generate_report(campaign: dict, events: list, tier: str = "free") -> tuple:
 
     logger.info(f"[Gemini/{GEMINI_MODEL}] Generating report — tier: {tier}")
 
-    model = genai.GenerativeModel(
-        GEMINI_MODEL,
-        generation_config=genai.GenerationConfig(
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
             max_output_tokens=max_tokens,
             temperature=0.35,
             response_mime_type="application/json",
         ),
     )
 
-    response = model.generate_content(prompt)
-    raw      = (response.text or "").strip()
+    raw = (response.text or "").strip()
 
     usage = {
         "model":      GEMINI_MODEL,

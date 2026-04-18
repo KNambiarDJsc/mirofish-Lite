@@ -73,6 +73,10 @@ def create_app(config_class=Config):
     app.register_blueprint(mvp_bp, url_prefix='/api/mvp')
     
     # 健康检查
+    @app.route('/')
+    def root():
+        return {'status': 'ok', 'service': 'AXonic Backend', 'docs': '/api/health'}
+
     @app.route('/api/health')
     def health():
         return {'status': 'ok', 'service': 'AXonic Backend'}
