@@ -21,7 +21,7 @@ from ..config import Config
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.gemini_service import GeminiService
-from .supabase_memory import get_memory
+from .supabase_memory import get_memory, get_client
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -88,22 +88,58 @@ class SupabaseSearchService:
         reader = SupabaseEntityReader()
         return reader.get_entities_by_type(graph_id, entity_type)
 
-    def interview_agents(self, *a, **kw) -> SearchResult:
-        return SearchResult(facts=["Interview tool not available in cloud-only mode."])
+    def interview_agents(self, simulation_id: str, query: str, limit: int = 5) -> SearchResult:
+        """Find and 'interview' specific agents based on a query."""
+        try:
+            client = get_client()
+            # Perform a keyword search on persona/bio/archetype
+            res = (
+                client.table("personas")
+                .select("name, tier, archetype, persona, bio")
+                .eq("simulation_id", simulation_id)
+                .or_(f"persona.ilike.%{query}%,bio.ilike.%{query}%,archetype.ilike.%{query}%")
+                .limit(limit)
+                .execute()
+            )
+            rows = res.data or []
+            facts = [
+                f"Agent {r['name']} ({r['tier']}, {r['archetype']}): {r['persona']}"
+                for r in rows
+            ]
+            return SearchResult(facts=facts)
+        except Exception as e:
+            logger.error(f"Interview agents failed: {e}")
+            return SearchResult(facts=[f"Error interviewing agents: {str(e)}"])
+
+    def get_persona_analytics(self, simulation_id: str) -> Dict[str, Any]:
+        """Call RPC to get math-heavy tier/trait distributions."""
+        try:
+            client = get_client()
+            res = client.rpc("get_persona_tier_distribution", {"p_simulation_id": simulation_id}).execute()
+            return {"tier_distribution": res.data or []}
+        except Exception as e:
+            logger.error(f"Persona analytics failed: {e}")
+            return {"tier_distribution": [], "error": str(e)}
 
     def get_simulation_context(
-        self, graph_id: str, simulation_requirement: str = "",
+        self, graph_id: str, simulation_id: str = "", simulation_requirement: str = "",
     ) -> dict:
         stats = self.get_graph_statistics(graph_id)
         related = self.insight_forge(graph_id, simulation_requirement or "all events")
         related_facts = related.facts[:15]
+        
+        persona_stats = {}
+        if simulation_id:
+            persona_stats = self.get_persona_analytics(simulation_id)
+
         return {
             "graph_statistics": {
                 "total_nodes": stats.get("node_count", 0),
                 "total_edges": stats.get("edge_count", 0),
             },
-            "entity_types": stats.get("entity_types", []),
+            "entity_types": stats.get("entity_types", {}),
             "total_entities": stats.get("node_count", 0),
+            "persona_analytics": persona_stats,
             "related_facts": related_facts,
             "related_facts_json": json.dumps(related_facts, ensure_ascii=False, indent=2),
         }
@@ -769,10 +805,10 @@ CHAT_OBSERVATION_SUFFIX = "\n\nAnswer concisely."
 class ReportAgent:
     """ReAct-driven Indian marketing decision report generator."""
 
-    MAX_TOOL_CALLS_PER_SECTION = 1
+    MAX_TOOL_CALLS_PER_SECTION = 2
     MAX_REFLECTION_ROUNDS = 3
     MAX_TOOL_CALLS_PER_CHAT = 2
-    VALID_TOOL_NAMES = {"insight_forge", "panorama_search", "quick_search", "interview_agents"}
+    VALID_TOOL_NAMES = {"insight_forge", "panorama_search", "quick_search", "interview_agents", "get_persona_analytics"}
 
     def __init__(
         self,
@@ -822,9 +858,14 @@ class ReportAgent:
                 "name": "interview_agents",
                 "description": TOOL_DESC_INTERVIEW_AGENTS,
                 "parameters": {
-                    "interview_topic": "Interview topic (e.g., 'Tier2 reaction to pricing')",
-                    "max_agents": "Max agents to interview (default 5, max 10)",
+                    "query": "Topic or trait to find agents for (e.g. 'Tier 2 students')",
+                    "limit": "Max agents to interview (default 5)",
                 },
+            },
+            "get_persona_analytics": {
+                "name": "get_persona_analytics",
+                "description": "Returns math-heavy distribution of persona tiers, SECs, and behavioral traits from Supabase.",
+                "parameters": {},
             },
         }
 
@@ -864,18 +905,20 @@ class ReportAgent:
                 return result.to_text()
 
             if tool_name == "interview_agents":
-                topic = parameters.get("interview_topic", parameters.get("query", ""))
-                max_agents = parameters.get("max_agents", 5)
-                if isinstance(max_agents, str):
-                    max_agents = int(max_agents)
-                max_agents = min(max_agents, 10)
+                query = parameters.get("query", parameters.get("interview_topic", ""))
+                limit = parameters.get("limit", parameters.get("max_agents", 5))
+                if isinstance(limit, str):
+                    limit = int(limit)
                 result = self.zep_tools.interview_agents(
                     simulation_id=self.simulation_id,
-                    interview_requirement=topic,
-                    simulation_requirement=self.simulation_requirement,
-                    max_agents=max_agents,
+                    query=query,
+                    limit=limit,
                 )
                 return result.to_text()
+
+            if tool_name == "get_persona_analytics":
+                stats = self.zep_tools.get_persona_analytics(self.simulation_id)
+                return json.dumps(stats, ensure_ascii=False, indent=2)
 
             # Legacy tool redirects
             if tool_name == "search_graph":
@@ -1931,6 +1974,7 @@ class ReportManager:
     def save_report(cls, report: Report) -> None:
         cls._ensure_report_folder(report.report_id)
 
+        # 1. Local Persistence
         with open(cls._get_report_path(report.report_id), 'w', encoding='utf-8') as f:
             json.dump(report.to_dict(), f, ensure_ascii=False, indent=2)
 
@@ -1941,6 +1985,44 @@ class ReportManager:
             with open(cls._get_report_markdown_path(report.report_id),
                       'w', encoding='utf-8') as f:
                 f.write(report.markdown_content)
+
+        # 2. Supabase Persistence (Decision-Grade)
+        if report.status == ReportStatus.COMPLETED or report.markdown_content:
+            try:
+                client = get_client()
+                
+                # Extract Decision Data from Markdown
+                decision = "HOLD"
+                confidence = 50
+                impact = "Medium"
+                
+                if report.markdown_content:
+                    content = report.markdown_content.upper()
+                    if "DECISION: LAUNCH" in content: decision = "LAUNCH"
+                    elif "DECISION: KILL" in content: decision = "KILL"
+                    elif "DECISION: HOLD" in content: decision = "HOLD"
+                    
+                    # Try to find confidence integer
+                    conf_match = re.search(r'CONFIDENCE.*?(\d+)', content)
+                    if conf_match:
+                        confidence = int(conf_match.group(1))
+
+                report_data = {
+                    "id": report.report_id,
+                    "simulation_id": report.simulation_id,
+                    "title": report.outline.title if report.outline else "Campaign Decision Report",
+                    "summary": report.outline.summary if report.outline else "",
+                    "content": report.markdown_content,
+                    "decision": decision,
+                    "confidence_score": confidence,
+                    "business_impact": impact # DEFAULT
+                }
+                
+                # Upsert into Supabase
+                client.table("reports").upsert(report_data).execute()
+                logger.info(f"Report persisted to Supabase: {report.report_id}")
+            except Exception as e:
+                logger.error(f"Failed to persist report to Supabase: {e}")
 
         logger.info(f"Report saved: {report.report_id}")
 
