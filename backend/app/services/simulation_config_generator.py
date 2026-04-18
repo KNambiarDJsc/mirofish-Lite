@@ -1,17 +1,15 @@
 """
-模拟配置智能生成器
-使用LLM根据模拟需求、文档内容、图谱信息自动生成细致的模拟参数
-实现全程自动化，无需人工设置参数
+Simulation Config Generator — AXonic (Indian Market)
 
-采用分步生成策略，避免一次性生成过长内容导致失败：
-1. 生成时间配置
-2. 生成事件配置
-3. 分批生成Agent配置
-4. 生成平台配置
+IST timezone + tier-realistic rhythm + behavioral traits (price_sensitivity,
+trust_factor, influence_susceptibility, decision_speed) + WhatsApp private-
+network dynamics + viral amplification thresholds + group/peer influence +
+opinion-shift mechanics.
 """
 
 import json
 import math
+import random
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -21,167 +19,148 @@ from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from .supabase_entity_reader import EntityNode, SupabaseEntityReader as ZepEntityReader
 
-logger = get_logger('mirofish.simulation_config')
+logger = get_logger('axonic.simulation_config')
 
-# 中国作息时间配置（北京时间）
-CHINA_TIMEZONE_CONFIG = {
-    # 深夜时段（几乎无人活动）
-    "dead_hours": [0, 1, 2, 3, 4, 5],
-    # 早间时段（逐渐醒来）
-    "morning_hours": [6, 7, 8],
-    # 工作时段
-    "work_hours": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
-    # 晚间高峰（最活跃）
+
+INDIA_TIMEZONE_CONFIG = {
+    "dead_hours": [1, 2, 3, 4, 5],
+    "morning_hours": [6, 7, 8, 9],
+    "work_hours": list(range(10, 19)),
     "peak_hours": [19, 20, 21, 22],
-    # 夜间时段（活跃度下降）
-    "night_hours": [23],
-    # 活跃度系数
+    "night_hours": [23, 0],
     "activity_multipliers": {
-        "dead": 0.05,      # 凌晨几乎无人
-        "morning": 0.4,    # 早间逐渐活跃
-        "work": 0.7,       # 工作时段中等
-        "peak": 1.5,       # 晚间高峰
-        "night": 0.5       # 深夜下降
-    }
+        "dead": 0.05, "morning": 0.45, "work": 0.70, "peak": 1.60, "night": 0.40,
+    },
 }
 
 
+# ── Agent config with behavioral traits ──────────────────────────────────────
+
 @dataclass
 class AgentActivityConfig:
-    """单个Agent的活动配置"""
+    """Indian market simulation agent — activity + decision-driving traits."""
     agent_id: int
     entity_uuid: str
     entity_name: str
     entity_type: str
-    
-    # 活跃度配置 (0.0-1.0)
-    activity_level: float = 0.5  # 整体活跃度
-    
-    # 发言频率（每小时预期发言次数）
+
+    # Activity
+    activity_level: float = 0.5
     posts_per_hour: float = 1.0
     comments_per_hour: float = 2.0
-    
-    # 活跃时间段（24小时制，0-23）
     active_hours: List[int] = field(default_factory=lambda: list(range(8, 23)))
-    
-    # 响应速度（对热点事件的反应延迟，单位：模拟分钟）
+
     response_delay_min: int = 5
     response_delay_max: int = 60
-    
-    # 情感倾向 (-1.0到1.0，负面到正面)
+
     sentiment_bias: float = 0.0
-    
-    # 立场（对特定话题的态度）
-    stance: str = "neutral"  # supportive, opposing, neutral, observer
-    
-    # 影响力权重（决定其发言被其他Agent看到的概率）
+    stance: str = "neutral"   # supportive | opposing | neutral | observer
+
+    # Influence
     influence_weight: float = 1.0
 
+    # Behavioral traits (drive HOW the agent thinks, not HOW OFTEN)
+    price_sensitivity: float = 0.5
+    trust_factor: float = 0.5
+    influence_susceptibility: float = 0.5
+    decision_speed: float = 0.5
 
-@dataclass  
+    # Network / group
+    group_id: Optional[int] = None
+    peer_influence_strength: float = 0.5
+
+    # Learning during simulation
+    opinion_shift_rate: float = 0.1
+
+
+@dataclass
 class TimeSimulationConfig:
-    """时间模拟配置（基于中国人作息习惯）"""
-    # 模拟总时长（模拟小时数）
-    total_simulation_hours: int = 6  # 默认模拟6小时 (Gemini Free Tier 优化)
-    
-    # 每轮代表的时间（模拟分钟）- 默认60分钟（1小时），加快时间流速
+    total_simulation_hours: int = 6
     minutes_per_round: int = 60
-    
-    # 每小时激活的Agent数量范围
     agents_per_hour_min: int = 1
     agents_per_hour_max: int = 3
-    
-    # 高峰时段（晚间19-22点，中国人最活跃的时间）
+
     peak_hours: List[int] = field(default_factory=lambda: [19, 20, 21, 22])
-    peak_activity_multiplier: float = 1.5
-    
-    # 低谷时段（凌晨0-5点，几乎无人活动）
-    off_peak_hours: List[int] = field(default_factory=lambda: [0, 1, 2, 3, 4, 5])
-    off_peak_activity_multiplier: float = 0.05  # 凌晨活跃度极低
-    
-    # 早间时段
-    morning_hours: List[int] = field(default_factory=lambda: [6, 7, 8])
-    morning_activity_multiplier: float = 0.4
-    
-    # 工作时段
-    work_hours: List[int] = field(default_factory=lambda: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
-    work_activity_multiplier: float = 0.7
+    peak_activity_multiplier: float = 1.6
+
+    off_peak_hours: List[int] = field(default_factory=lambda: [1, 2, 3, 4, 5])
+    off_peak_activity_multiplier: float = 0.05
+
+    morning_hours: List[int] = field(default_factory=lambda: [6, 7, 8, 9])
+    morning_activity_multiplier: float = 0.45
+
+    work_hours: List[int] = field(default_factory=lambda: list(range(10, 19)))
+    work_activity_multiplier: float = 0.70
+
+
+@dataclass
+class PrivateNetworkConfig:
+    """WhatsApp / peer / family private virality layer."""
+    private_spread_factor: float = 1.2
+    forward_probability: float = 0.3
+    trust_boost_on_forward: float = 0.2
+    family_group_multiplier: float = 1.5
+
+
+@dataclass
+class AmplificationConfig:
+    """Public → private amplification dynamics."""
+    viral_amplification_factor: float = 1.5
+    influencer_trigger_threshold: int = 5     # reactions before an influencer jumps in
+    media_pickup_threshold: int = 15          # reactions before media amplifies
+    echo_chamber_strength: float = 0.5
 
 
 @dataclass
 class EventConfig:
-    """事件配置"""
-    # 初始事件（模拟开始时的触发事件）
     initial_posts: List[Dict[str, Any]] = field(default_factory=list)
-    
-    # 定时事件（在特定时间触发的事件）
     scheduled_events: List[Dict[str, Any]] = field(default_factory=list)
-    
-    # 热点话题关键词
     hot_topics: List[str] = field(default_factory=list)
-    
-    # 舆论引导方向
     narrative_direction: str = ""
 
 
 @dataclass
 class PlatformConfig:
-    """平台特定配置"""
-    platform: str  # twitter or reddit
-    
-    # 推荐算法权重
-    recency_weight: float = 0.4  # 时间新鲜度
-    popularity_weight: float = 0.3  # 热度
-    relevance_weight: float = 0.3  # 相关性
-    
-    # 病毒传播阈值（达到多少互动后触发扩散）
+    platform: str
+    recency_weight: float = 0.4
+    popularity_weight: float = 0.3
+    relevance_weight: float = 0.3
     viral_threshold: int = 10
-    
-    # 回声室效应强度（相似观点聚集程度）
     echo_chamber_strength: float = 0.5
 
 
 @dataclass
 class SimulationParameters:
-    """完整的模拟参数配置"""
-    # 基础信息
     simulation_id: str
     project_id: str
     graph_id: str
     simulation_requirement: str
-    
-    # 时间配置
+
     time_config: TimeSimulationConfig = field(default_factory=TimeSimulationConfig)
-    
-    # Agent配置列表
     agent_configs: List[AgentActivityConfig] = field(default_factory=list)
-    
-    # 事件配置
     event_config: EventConfig = field(default_factory=EventConfig)
-    
-    # 平台配置
+    private_network: PrivateNetworkConfig = field(default_factory=PrivateNetworkConfig)
+    amplification: AmplificationConfig = field(default_factory=AmplificationConfig)
+
     twitter_config: Optional[PlatformConfig] = None
     reddit_config: Optional[PlatformConfig] = None
-    
-    # LLM配置
+
     llm_model: str = ""
     llm_base_url: str = ""
-    
-    # 生成元数据
     generated_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    generation_reasoning: str = ""  # LLM的推理说明
-    
+    generation_reasoning: str = ""
+
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
-        time_dict = asdict(self.time_config)
         return {
             "simulation_id": self.simulation_id,
             "project_id": self.project_id,
             "graph_id": self.graph_id,
             "simulation_requirement": self.simulation_requirement,
-            "time_config": time_dict,
+            "time_config": asdict(self.time_config),
             "agent_configs": [asdict(a) for a in self.agent_configs],
             "event_config": asdict(self.event_config),
+            "private_network": asdict(self.private_network),
+            "amplification": asdict(self.amplification),
             "twitter_config": asdict(self.twitter_config) if self.twitter_config else None,
             "reddit_config": asdict(self.reddit_config) if self.reddit_config else None,
             "llm_model": self.llm_model,
@@ -189,42 +168,26 @@ class SimulationParameters:
             "generated_at": self.generated_at,
             "generation_reasoning": self.generation_reasoning,
         }
-    
+
     def to_json(self, indent: int = 2) -> str:
-        """转换为JSON字符串"""
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=indent)
 
 
 class SimulationConfigGenerator:
-    """
-    模拟配置智能生成器
-    
-    使用LLM分析模拟需求、文档内容、图谱实体信息，
-    自动生成最佳的模拟参数配置
-    
-    采用分步生成策略：
-    1. 生成时间配置和事件配置（轻量级）
-    2. 分批生成Agent配置（每批10-20个）
-    3. 生成平台配置
-    """
-    
-    # 上下文最大字符数
     MAX_CONTEXT_LENGTH = 50000
-    # 每批生成的Agent数量
     AGENTS_PER_BATCH = 15
-    
-    # 各步骤的上下文截断长度（字符数）
-    TIME_CONFIG_CONTEXT_LENGTH = 10000   # 时间配置
-    EVENT_CONFIG_CONTEXT_LENGTH = 8000   # 事件配置
-    ENTITY_SUMMARY_LENGTH = 300          # 实体摘要
-    AGENT_SUMMARY_LENGTH = 300           # Agent配置中的实体摘要
-    ENTITIES_PER_TYPE_DISPLAY = 20       # 每类实体显示数量
-    
+    TIME_CONFIG_CONTEXT_LENGTH = 10000
+    EVENT_CONFIG_CONTEXT_LENGTH = 8000
+    ENTITY_SUMMARY_LENGTH = 300
+    AGENT_SUMMARY_LENGTH = 300
+    ENTITIES_PER_TYPE_DISPLAY = 20
+
     def __init__(self, **kwargs):
         self._llm = LLMClient()
         self.model_name = "llama-3.3-70b-versatile"
         self.base_url = "http://localhost:5001"
 
+    # ── Lite (zero-LLM) config ────────────────────────────────────────────────
     def generate_lite_config(
         self,
         simulation_id: str,
@@ -235,51 +198,36 @@ class SimulationConfigGenerator:
         enable_twitter: bool = True,
         enable_reddit: bool = True,
     ) -> SimulationParameters:
-        """
-        Generates a 100% hardcoded "Micro-Lite" configuration.
-        Zero API calls. Optimized for 3 rounds and minimal agent activity.
-        """
-        logger.info(f"Generating Micro-Lite hardcoded config for simulation: {simulation_id}")
-        
-        # 1. Micro-Lite Time Config (3 rounds, very slow/restricted activity)
+        logger.info(f"Generating lite hardcoded config: {simulation_id}")
+
         time_config = TimeSimulationConfig(
             total_simulation_hours=3,
             minutes_per_round=60,
             agents_per_hour_min=1,
-            agents_per_hour_max=1,  # Force only 1 agent at a time
-            peak_hours=[],          # Neutral peak
-            off_peak_hours=list(range(0, 24)), # All house are treated as neutral/low
-            off_peak_activity_multiplier=1.0   # Keep it simple
+            agents_per_hour_max=1,
+            peak_hours=[],
+            off_peak_hours=list(range(0, 24)),
+            off_peak_activity_multiplier=1.0,
         )
 
-        # 2. Basic Event Config
         event_config = EventConfig(
-            hot_topics=["Discussion", "Information"],
-            narrative_direction="Neutral information sharing",
+            hot_topics=["product", "offer", "paisa vasool", "worth it or not"],
+            narrative_direction="Neutral information sharing across Indian consumer segments.",
             initial_posts=[{
-                "content": f"Starting a discussion regarding: {simulation_requirement[:100]}",
-                "poster_type": entities[0].get_entity_type() or "User",
-                "poster_agent_id": 1
-            }]
+                "content": f"Starting a discussion around: {simulation_requirement[:100]}",
+                "poster_type": entities[0].get_entity_type() or "Consumer",
+                "poster_agent_id": 1,
+            }],
         )
 
-        # 3. Basic Agent Configs (Rule-based derivation)
         agent_configs = []
         for i, e in enumerate(entities):
-            etype = (e.get_entity_type() or "User").lower()
-            lvl = 0.2 if etype in ("official", "university") else 0.5
-            
-            agent_configs.append(AgentActivityConfig(
-                agent_id=i + 1,
-                entity_uuid=e.uuid,
-                entity_name=e.name,
-                entity_type=etype,
-                activity_level=lvl,
-                posts_per_hour=0.5,
-                comments_per_hour=1.0,
-                active_hours=list(range(0, 24)),
-                influence_weight=1.5 if etype in ("official", "mediaoutlet") else 1.0
-            ))
+            etype = (e.get_entity_type() or "Consumer").lower()
+            lvl = 0.2 if etype in ("brand", "regulator", "mediaoutlet") else 0.5
+            cfg = self._agent_config_by_rule(e, overrides={"activity_level": lvl})
+            cfg.agent_id = i + 1
+            cfg.active_hours = list(range(0, 24))
+            agent_configs.append(cfg)
 
         return SimulationParameters(
             simulation_id=simulation_id,
@@ -292,9 +240,10 @@ class SimulationConfigGenerator:
             twitter_config=PlatformConfig(platform="twitter") if enable_twitter else None,
             reddit_config=PlatformConfig(platform="reddit") if enable_reddit else None,
             llm_model="rule-based",
-            generation_reasoning="Micro-Lite Mode: Hardcoded rules applied to save 4+ API calls."
+            generation_reasoning="Lite mode: hardcoded Indian market rules, 0 API calls.",
         )
-    
+
+    # ── Full LLM-driven config ────────────────────────────────────────────────
     def generate_config(
         self,
         simulation_id: str,
@@ -307,702 +256,689 @@ class SimulationConfigGenerator:
         enable_reddit: bool = True,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
     ) -> SimulationParameters:
-        """
-        智能生成完整的模拟配置（分步生成）
-        
-        Args:
-            simulation_id: 模拟ID
-            project_id: 项目ID
-            graph_id: 图谱ID
-            simulation_requirement: 模拟需求描述
-            document_text: 原始文档内容
-            entities: 过滤后的实体列表
-            enable_twitter: 是否启用Twitter
-            enable_reddit: 是否启用Reddit
-            progress_callback: 进度回调函数(current_step, total_steps, message)
-            
-        Returns:
-            SimulationParameters: 完整的模拟参数
-        """
-        logger.info(f"开始智能生成模拟配置: simulation_id={simulation_id}, 实体数={len(entities)}")
-        
-        # 计算总步骤数
+        logger.info(f"Generating Indian market config: id={simulation_id}, "
+                    f"entities={len(entities)}")
+
         num_batches = math.ceil(len(entities) / self.AGENTS_PER_BATCH)
-        total_steps = 3 + num_batches  # 时间配置 + 事件配置 + N批Agent + 平台配置
+        total_steps = 3 + num_batches
         current_step = 0
-        
-        def report_progress(step: int, message: str):
+
+        def report(step: int, msg: str):
             nonlocal current_step
             current_step = step
             if progress_callback:
-                progress_callback(step, total_steps, message)
-            logger.info(f"[{step}/{total_steps}] {message}")
-        
-        # 1. 构建基础上下文信息
-        context = self._build_context(
-            simulation_requirement=simulation_requirement,
-            document_text=document_text,
-            entities=entities
-        )
-        
-        reasoning_parts = []
-        
-        # ========== 步骤1: 生成时间配置 ==========
-        report_progress(1, "生成时间配置...")
-        num_entities = len(entities)
-        time_config_result = self._generate_time_config(context, num_entities)
-        time_config = self._parse_time_config(time_config_result, num_entities)
-        reasoning_parts.append(f"时间配置: {time_config_result.get('reasoning', '成功')}")
-        
-        # ========== 步骤2: 生成事件配置 ==========
-        report_progress(2, "生成事件配置和热点话题...")
-        event_config_result = self._generate_event_config(context, simulation_requirement, entities)
-        event_config = self._parse_event_config(event_config_result)
-        reasoning_parts.append(f"事件配置: {event_config_result.get('reasoning', '成功')}")
-        
-        # ========== 步骤3-N: 分批生成Agent配置 ==========
-        all_agent_configs = []
+                progress_callback(step, total_steps, msg)
+            logger.info(f"[{step}/{total_steps}] {msg}")
+
+        context = self._build_context(simulation_requirement, document_text, entities)
+        reasoning = []
+
+        report(1, "Generating time config (IST)...")
+        time_result = self._generate_time_config(context, len(entities))
+        time_config = self._parse_time_config(time_result, len(entities))
+        reasoning.append(f"Time: {time_result.get('reasoning', 'ok')}")
+
+        report(2, "Generating event config + Indian hot topics...")
+        event_result = self._generate_event_config(context, simulation_requirement, entities)
+        event_config = self._parse_event_config(event_result)
+        reasoning.append(f"Events: {event_result.get('reasoning', 'ok')}")
+
+        all_agents: List[AgentActivityConfig] = []
         for batch_idx in range(num_batches):
-            start_idx = batch_idx * self.AGENTS_PER_BATCH
-            end_idx = min(start_idx + self.AGENTS_PER_BATCH, len(entities))
-            batch_entities = entities[start_idx:end_idx]
-            
-            report_progress(
-                3 + batch_idx,
-                f"生成Agent配置 ({start_idx + 1}-{end_idx}/{len(entities)})..."
-            )
-            
-            batch_configs = self._generate_agent_configs_batch(
-                context=context,
-                entities=batch_entities,
-                start_idx=start_idx,
-                simulation_requirement=simulation_requirement
-            )
-            all_agent_configs.extend(batch_configs)
-        
-        reasoning_parts.append(f"Agent配置: 成功生成 {len(all_agent_configs)} 个")
-        
-        # ========== 为初始帖子分配发布者 Agent ==========
-        logger.info("为初始帖子分配合适的发布者 Agent...")
-        event_config = self._assign_initial_post_agents(event_config, all_agent_configs)
-        assigned_count = len([p for p in event_config.initial_posts if p.get("poster_agent_id") is not None])
-        reasoning_parts.append(f"初始帖子分配: {assigned_count} 个帖子已分配发布者")
-        
-        # ========== 最后一步: 生成平台配置 ==========
-        report_progress(total_steps, "生成平台配置...")
-        twitter_config = None
-        reddit_config = None
-        
-        if enable_twitter:
-            twitter_config = PlatformConfig(
-                platform="twitter",
-                recency_weight=0.4,
-                popularity_weight=0.3,
-                relevance_weight=0.3,
-                viral_threshold=10,
-                echo_chamber_strength=0.5
-            )
-        
-        if enable_reddit:
-            reddit_config = PlatformConfig(
-                platform="reddit",
-                recency_weight=0.3,
-                popularity_weight=0.4,
-                relevance_weight=0.3,
-                viral_threshold=15,
-                echo_chamber_strength=0.6
-            )
-        
-        # 构建最终参数
+            s_idx = batch_idx * self.AGENTS_PER_BATCH
+            e_idx = min(s_idx + self.AGENTS_PER_BATCH, len(entities))
+            batch = entities[s_idx:e_idx]
+            report(3 + batch_idx, f"Agent configs ({s_idx + 1}-{e_idx}/{len(entities)})...")
+            all_agents.extend(self._generate_agent_configs_batch(
+                context, batch, s_idx, simulation_requirement,
+            ))
+
+        reasoning.append(f"Agents: {len(all_agents)}")
+
+        # Assign network groups (peer + family clusters)
+        self._assign_network_groups(all_agents)
+
+        logger.info("Matching initial posts to agents...")
+        event_config = self._assign_initial_post_agents(event_config, all_agents)
+        assigned = len([p for p in event_config.initial_posts if p.get("poster_agent_id") is not None])
+        reasoning.append(f"Initial posts assigned: {assigned}")
+
+        report(total_steps, "Generating platform + network configs...")
+        twitter = PlatformConfig(
+            platform="twitter", recency_weight=0.4, popularity_weight=0.3,
+            relevance_weight=0.3, viral_threshold=10, echo_chamber_strength=0.5,
+        ) if enable_twitter else None
+        reddit = PlatformConfig(
+            platform="reddit", recency_weight=0.3, popularity_weight=0.4,
+            relevance_weight=0.3, viral_threshold=15, echo_chamber_strength=0.6,
+        ) if enable_reddit else None
+
         params = SimulationParameters(
             simulation_id=simulation_id,
             project_id=project_id,
             graph_id=graph_id,
             simulation_requirement=simulation_requirement,
             time_config=time_config,
-            agent_configs=all_agent_configs,
+            agent_configs=all_agents,
             event_config=event_config,
-            twitter_config=twitter_config,
-            reddit_config=reddit_config,
+            private_network=PrivateNetworkConfig(),
+            amplification=AmplificationConfig(),
+            twitter_config=twitter,
+            reddit_config=reddit,
             llm_model=self.model_name,
             llm_base_url=self.base_url,
-            generation_reasoning=" | ".join(reasoning_parts)
+            generation_reasoning=" | ".join(reasoning),
         )
-        
-        logger.info(f"模拟配置生成完成: {len(params.agent_configs)} 个Agent配置")
-        
+
+        logger.info(f"Config complete: {len(params.agent_configs)} agents")
         return params
-    
-    def _build_context(
-        self,
-        simulation_requirement: str,
-        document_text: str,
-        entities: List[EntityNode]
-    ) -> str:
-        """构建LLM上下文，截断到最大长度"""
-        
-        # 实体摘要
-        entity_summary = self._summarize_entities(entities)
-        
-        # 构建上下文
-        context_parts = [
-            f"## 模拟需求\n{simulation_requirement}",
-            f"\n## 实体信息 ({len(entities)}个)\n{entity_summary}",
+
+    # ── Context ──────────────────────────────────────────────────────────────
+    def _build_context(self, simulation_requirement, document_text, entities) -> str:
+        summary = self._summarize_entities(entities)
+        parts = [
+            f"## Campaign Requirement\n{simulation_requirement}",
+            f"\n## Entities ({len(entities)} total)\n{summary}",
         ]
-        
-        current_length = sum(len(p) for p in context_parts)
-        remaining_length = self.MAX_CONTEXT_LENGTH - current_length - 500  # 留500字符余量
-        
-        if remaining_length > 0 and document_text:
-            doc_text = document_text[:remaining_length]
-            if len(document_text) > remaining_length:
-                doc_text += "\n...(文档已截断)"
-            context_parts.append(f"\n## 原始文档内容\n{doc_text}")
-        
-        return "\n".join(context_parts)
-    
+        current = sum(len(p) for p in parts)
+        remaining = self.MAX_CONTEXT_LENGTH - current - 500
+        if remaining > 0 and document_text:
+            doc = document_text[:remaining]
+            if len(document_text) > remaining:
+                doc += "\n...(truncated)"
+            parts.append(f"\n## Strategy Document\n{doc}")
+        return "\n".join(parts)
+
     def _summarize_entities(self, entities: List[EntityNode]) -> str:
-        """生成实体摘要"""
         lines = []
-        
-        # 按类型分组
         by_type: Dict[str, List[EntityNode]] = {}
         for e in entities:
-            t = e.get_entity_type() or "Unknown"
-            if t not in by_type:
-                by_type[t] = []
-            by_type[t].append(e)
-        
-        for entity_type, type_entities in by_type.items():
-            lines.append(f"\n### {entity_type} ({len(type_entities)}个)")
-            # 使用配置的显示数量和摘要长度
-            display_count = self.ENTITIES_PER_TYPE_DISPLAY
-            summary_len = self.ENTITY_SUMMARY_LENGTH
-            for e in type_entities[:display_count]:
-                summary_preview = (e.summary[:summary_len] + "...") if len(e.summary) > summary_len else e.summary
-                lines.append(f"- {e.name}: {summary_preview}")
-            if len(type_entities) > display_count:
-                lines.append(f"  ... 还有 {len(type_entities) - display_count} 个")
-        
+            by_type.setdefault(e.get_entity_type() or "Unknown", []).append(e)
+
+        for etype, ents in by_type.items():
+            lines.append(f"\n### {etype} ({len(ents)})")
+            for e in ents[: self.ENTITIES_PER_TYPE_DISPLAY]:
+                s = e.summary[: self.ENTITY_SUMMARY_LENGTH]
+                if len(e.summary) > self.ENTITY_SUMMARY_LENGTH:
+                    s += "..."
+                lines.append(f"- {e.name}: {s}")
+            if len(ents) > self.ENTITIES_PER_TYPE_DISPLAY:
+                lines.append(f"  ... plus {len(ents) - self.ENTITIES_PER_TYPE_DISPLAY} more")
         return "\n".join(lines)
-    
+
     def _call_llm_with_retry(self, prompt: str, system_prompt: str) -> Dict[str, Any]:
-        """Call LLM with retry and JSON parsing."""
         try:
             return self._llm.chat_json(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.5,
             )
         except Exception as e:
             logger.warning("LLM call failed: %s", str(e)[:80])
             raise
-    
-    def _fix_truncated_json(self, content: str) -> str:
-        """修复被截断的JSON"""
-        content = content.strip()
-        
-        # 计算未闭合的括号
-        open_braces = content.count('{') - content.count('}')
-        open_brackets = content.count('[') - content.count(']')
-        
-        # 检查是否有未闭合的字符串
-        if content and content[-1] not in '",}]':
-            content += '"'
-        
-        # 闭合括号
-        content += ']' * open_brackets
-        content += '}' * open_braces
-        
-        return content
-    
-    def _try_fix_config_json(self, content: str) -> Optional[Dict[str, Any]]:
-        """尝试修复配置JSON"""
-        import re
-        
-        # 修复被截断的情况
-        content = self._fix_truncated_json(content)
-        
-        # 提取JSON部分
-        json_match = re.search(r'\{[\s\S]*\}', content)
-        if json_match:
-            json_str = json_match.group()
-            
-            # 移除字符串中的换行符
-            def fix_string(match):
-                s = match.group(0)
-                s = s.replace('\n', ' ').replace('\r', ' ')
-                s = re.sub(r'\s+', ' ', s)
-                return s
-            
-            json_str = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', fix_string, json_str)
-            
-            try:
-                return json.loads(json_str)
-            except:
-                # 尝试移除所有控制字符
-                json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_str)
-                json_str = re.sub(r'\s+', ' ', json_str)
-                try:
-                    return json.loads(json_str)
-                except:
-                    pass
-        
-        return None
-    
+
+    # ── Time config ──────────────────────────────────────────────────────────
     def _generate_time_config(self, context: str, num_entities: int) -> Dict[str, Any]:
-        """生成时间配置"""
-        # 使用配置的上下文截断长度
-        context_truncated = context[:self.TIME_CONFIG_CONTEXT_LENGTH]
-        
-        # 计算最大允许值（80%的agent数）
-        max_agents_allowed = max(1, int(num_entities * 0.9))
-        
-        prompt = f"""基于以下模拟需求，生成时间模拟配置。
+        ctx = context[: self.TIME_CONFIG_CONTEXT_LENGTH]
+        max_allowed = max(1, int(num_entities * 0.9))
 
-{context_truncated}
+        prompt = f"""Generate a time config for Indian Standard Time (IST) behaviour.
 
-## 任务
-请生成时间配置JSON。
+{ctx}
 
-### 基本原则（仅供参考，需根据具体事件和参与群体灵活调整）：
-- 用户群体为中国人，需符合北京时间作息习惯
-- 凌晨0-5点几乎无人活动（活跃度系数0.05）
-- 早上6-8点逐渐活跃（活跃度系数0.4）
-- 工作时间9-18点中等活跃（活跃度系数0.7）
-- 晚间19-22点是高峰期（活跃度系数1.5）
-- 23点后活跃度下降（活跃度系数0.5）
-- 一般规律：凌晨低活跃、早间渐增、工作时段中等、晚间高峰
-- **重要**：以下示例值仅供参考，你需要根据事件性质、参与群体特点来调整具体时段
-  - 例如：学生群体高峰可能是21-23点；媒体全天活跃；官方机构只在工作时间
-  - 例如：突发热点可能导致深夜也有讨论，off_peak_hours 可适当缩短
+IST baseline rhythm:
+- 1–5 AM: dead (0.05x)
+- 6–9 AM: morning ramp (0.45x) — commute + news
+- 10 AM–6 PM: steady (0.70x) — WhatsApp + LinkedIn
+- 7–10 PM: PRIME TIME (1.60x) — Reels + YouTube + WhatsApp forwards
+- 11 PM–midnight: trailing (0.40x)
 
-### 返回JSON格式（不要markdown）
+Context-specific adjustments:
+- Cricket/IPL days → attention collapse 7:30–11 PM, spike after
+- Salary week (1st–7th) → conversion +25%
+- Festival windows (Diwali/Onam/Durga Puja/Eid/Ganesh Chaturthi) → prime extends to midnight
+- Student campaigns → late-night peak 10 PM–1 AM
+- Homemaker campaigns → morning 9–11 + afternoon 2–4 PM
+- B2B campaigns → Mon–Thu 9 AM–12 PM
 
-示例：
+Return JSON (no markdown):
 {{
-    "total_simulation_hours": 6,
-    "minutes_per_round": 60,
-    "agents_per_hour_min": 1,
-    "agents_per_hour_max": 3,
-    "peak_hours": [19, 20, 21, 22],
-    "off_peak_hours": [0, 1, 2, 3, 4, 5],
-    "morning_hours": [6, 7, 8],
-    "work_hours": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
-    "reasoning": "针对该事件的时间配置说明"
+  "total_simulation_hours": 6,
+  "minutes_per_round": 60,
+  "agents_per_hour_min": 1,
+  "agents_per_hour_max": 3,
+  "peak_hours": [19, 20, 21, 22],
+  "off_peak_hours": [1, 2, 3, 4, 5],
+  "morning_hours": [6, 7, 8, 9],
+  "work_hours": [10, 11, 12, 13, 14, 15, 16, 17, 18],
+  "reasoning": "campaign-specific justification"
 }}
 
-字段说明：
-- total_simulation_hours (int): 模拟总时长，建议4-6小时以节省API限额
-- minutes_per_round (int): 每轮时长，30-120分钟，建议60分钟
-- agents_per_hour_min (int): 每小时最少激活Agent数（建议1-2）
-- agents_per_hour_max (int): 每小时最多激活Agent数（建议3-5）
-- peak_hours (int数组): 高峰时段，根据事件参与群体调整
-- off_peak_hours (int数组): 低谷时段，通常深夜凌晨
-- morning_hours (int数组): 早间时段
-- work_hours (int数组): 工作时段
-- reasoning (string): 简要说明为什么这样配置"""
+agents_per_hour_max must not exceed {max_allowed}."""
 
-        system_prompt = "你是社交媒体模拟专家。返回纯JSON格式，时间配置需符合中国人作息习惯。"
-        
+        sys = ("You are a digital-marketing simulation expert for the Indian market. "
+               "Return PURE JSON. Match IST consumer rhythm.")
         try:
-            return self._call_llm_with_retry(prompt, system_prompt)
+            return self._call_llm_with_retry(prompt, sys)
         except Exception as e:
-            logger.warning(f"时间配置LLM生成失败: {e}, 使用默认配置")
-            return self._get_default_time_config(num_entities)
-    
-    def _get_default_time_config(self, num_entities: int) -> Dict[str, Any]:
-        """获取默认时间配置（中国人作息）"""
+            logger.warning(f"Time-config LLM failed: {e}, default IST")
+            return self._default_time_config()
+
+    def _default_time_config(self) -> Dict[str, Any]:
         return {
-            "total_simulation_hours": 6,
-            "minutes_per_round": 60,  # 每轮1小时，加快时间流速
-            "agents_per_hour_min": 1,
-            "agents_per_hour_max": 3,
+            "total_simulation_hours": 6, "minutes_per_round": 60,
+            "agents_per_hour_min": 1, "agents_per_hour_max": 3,
             "peak_hours": [19, 20, 21, 22],
-            "off_peak_hours": [0, 1, 2, 3, 4, 5],
-            "morning_hours": [6, 7, 8],
-            "work_hours": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
-            "reasoning": "使用默认中国人作息配置（每轮1小时）"
+            "off_peak_hours": [1, 2, 3, 4, 5],
+            "morning_hours": [6, 7, 8, 9],
+            "work_hours": list(range(10, 19)),
+            "reasoning": "Default IST rhythm.",
         }
-    
+
     def _parse_time_config(self, result: Dict[str, Any], num_entities: int) -> TimeSimulationConfig:
-        """解析时间配置结果，并验证agents_per_hour值不超过总agent数"""
-        # 获取原始值
-        agents_per_hour_min = result.get("agents_per_hour_min", max(1, num_entities // 15))
-        agents_per_hour_max = result.get("agents_per_hour_max", max(5, num_entities // 5))
-        
-        # 验证并修正：确保不超过总agent数
-        if agents_per_hour_min > num_entities:
-            logger.warning(f"agents_per_hour_min ({agents_per_hour_min}) 超过总Agent数 ({num_entities})，已修正")
-            agents_per_hour_min = max(1, num_entities // 10)
-        
-        if agents_per_hour_max > num_entities:
-            logger.warning(f"agents_per_hour_max ({agents_per_hour_max}) 超过总Agent数 ({num_entities})，已修正")
-            agents_per_hour_max = max(agents_per_hour_min + 1, num_entities // 2)
-        
-        # 确保 min < max
-        if agents_per_hour_min >= agents_per_hour_max:
-            agents_per_hour_min = max(1, agents_per_hour_max // 2)
-            logger.warning(f"agents_per_hour_min >= max，已修正为 {agents_per_hour_min}")
-        
+        a_min = result.get("agents_per_hour_min", max(1, num_entities // 15))
+        a_max = result.get("agents_per_hour_max", max(5, num_entities // 5))
+
+        if a_min > num_entities:
+            a_min = max(1, num_entities // 10)
+        if a_max > num_entities:
+            a_max = max(a_min + 1, num_entities // 2)
+        if a_min >= a_max:
+            a_min = max(1, a_max // 2)
+
         return TimeSimulationConfig(
-            total_simulation_hours=result.get("total_simulation_hours", 72),
-            minutes_per_round=result.get("minutes_per_round", 60),  # 默认每轮1小时
-            agents_per_hour_min=agents_per_hour_min,
-            agents_per_hour_max=agents_per_hour_max,
+            total_simulation_hours=result.get("total_simulation_hours", 6),
+            minutes_per_round=result.get("minutes_per_round", 60),
+            agents_per_hour_min=a_min,
+            agents_per_hour_max=a_max,
             peak_hours=result.get("peak_hours", [19, 20, 21, 22]),
-            off_peak_hours=result.get("off_peak_hours", [0, 1, 2, 3, 4, 5]),
-            off_peak_activity_multiplier=0.05,  # 凌晨几乎无人
-            morning_hours=result.get("morning_hours", [6, 7, 8]),
-            morning_activity_multiplier=0.4,
-            work_hours=result.get("work_hours", list(range(9, 19))),
-            work_activity_multiplier=0.7,
-            peak_activity_multiplier=1.5
+            off_peak_hours=result.get("off_peak_hours", [1, 2, 3, 4, 5]),
+            off_peak_activity_multiplier=0.05,
+            morning_hours=result.get("morning_hours", [6, 7, 8, 9]),
+            morning_activity_multiplier=0.45,
+            work_hours=result.get("work_hours", list(range(10, 19))),
+            work_activity_multiplier=0.70,
+            peak_activity_multiplier=1.60,
         )
-    
+
+    # ── Event config ─────────────────────────────────────────────────────────
     def _generate_event_config(
-        self, 
-        context: str, 
-        simulation_requirement: str,
-        entities: List[EntityNode]
+        self, context, simulation_requirement, entities,
     ) -> Dict[str, Any]:
-        """生成事件配置"""
-        
-        # 获取可用的实体类型列表，供 LLM 参考
-        entity_types_available = list(set(
-            e.get_entity_type() or "Unknown" for e in entities
-        ))
-        
-        # 为每种类型列出代表性实体名称
-        type_examples = {}
+        type_examples: Dict[str, List[str]] = {}
         for e in entities:
             etype = e.get_entity_type() or "Unknown"
-            if etype not in type_examples:
-                type_examples[etype] = []
+            type_examples.setdefault(etype, [])
             if len(type_examples[etype]) < 3:
                 type_examples[etype].append(e.name)
-        
-        type_info = "\n".join([
-            f"- {t}: {', '.join(examples)}" 
-            for t, examples in type_examples.items()
-        ])
-        
-        # 使用配置的上下文截断长度
-        context_truncated = context[:self.EVENT_CONFIG_CONTEXT_LENGTH]
-        
-        prompt = f"""基于以下模拟需求，生成事件配置。
 
-模拟需求: {simulation_requirement}
+        type_info = "\n".join(f"- {t}: {', '.join(x)}" for t, x in type_examples.items())
+        ctx = context[: self.EVENT_CONFIG_CONTEXT_LENGTH]
 
-{context_truncated}
+        prompt = f"""Generate an event config for an Indian marketing campaign simulation.
 
-## 可用实体类型及示例
+Campaign: {simulation_requirement}
+
+{ctx}
+
+## Available entity types + examples
 {type_info}
 
-## 任务
-请生成事件配置JSON：
-- 提取热点话题关键词
-- 描述舆论发展方向
-- 设计初始帖子内容，**每个帖子必须指定 poster_type（发布者类型）**
+## Task
+Produce realistic Indian-market event config.
 
-**重要**: poster_type 必须从上面的"可用实体类型"中选择，这样初始帖子才能分配给合适的 Agent 发布。
-例如：官方声明应由 Official/University 类型发布，新闻由 MediaOutlet 发布，学生观点由 Student 发布。
+Rules:
+1. **hot_topics** — MUST include authentic Indian marketing phrases. Mandatory flavour:
+   - "paisa vasool", "too expensive yaar", "UPI cashback worth it?",
+     "scam or legit?", "worth the hype?", "bro is it original?",
+     "discount kab aayega", "refer karo", "free delivery hai?",
+     "cash on delivery available?", "review dekha kya?", "friend ne bheja hai"
+   Pick 6–10 that fit the campaign, blend with campaign-specific keywords.
 
-返回JSON格式（不要markdown）：
+2. **narrative_direction** — 1–2 sentences on how reaction cascades across Tier1/Tier2/Tier3 and crosses from public (Instagram/Twitter) into private (WhatsApp/peer).
+
+3. **initial_posts** — each with `poster_type` exactly matching an available entity type above. Content in English or Hinglish, ≤200 chars, realistic social copy (not press-release tone).
+
+Return JSON (no markdown):
 {{
-    "hot_topics": ["关键词1", "关键词2", ...],
-    "narrative_direction": "<舆论发展方向描述>",
-    "initial_posts": [
-        {{"content": "帖子内容", "poster_type": "实体类型（必须从可用类型中选择）"}},
-        ...
-    ],
-    "reasoning": "<简要说明>"
+  "hot_topics": ["keyword1 (mix Indian phrases)", ...],
+  "narrative_direction": "how reaction spreads public → private across tiers",
+  "initial_posts": [
+    {{"content": "post content", "poster_type": "EntityType"}},
+    ...
+  ],
+  "reasoning": "brief justification"
 }}"""
 
-        system_prompt = "你是舆论分析专家。返回纯JSON格式。注意 poster_type 必须精确匹配可用实体类型。"
-        
+        sys = ("You are an Indian market campaign analyst. Return PURE JSON. "
+               "Hot topics MUST include authentic Hinglish phrases, not generic English words.")
         try:
-            return self._call_llm_with_retry(prompt, system_prompt)
+            return self._call_llm_with_retry(prompt, sys)
         except Exception as e:
-            logger.warning(f"事件配置LLM生成失败: {e}, 使用默认配置")
+            logger.warning(f"Event-config LLM failed: {e}")
             return {
-                "hot_topics": [],
+                "hot_topics": ["paisa vasool", "worth it or not", "scam or legit", "review dekha"],
                 "narrative_direction": "",
                 "initial_posts": [],
-                "reasoning": "使用默认配置"
+                "reasoning": "Default fallback.",
             }
-    
+
     def _parse_event_config(self, result: Dict[str, Any]) -> EventConfig:
-        """解析事件配置结果"""
         return EventConfig(
             initial_posts=result.get("initial_posts", []),
             scheduled_events=[],
             hot_topics=result.get("hot_topics", []),
-            narrative_direction=result.get("narrative_direction", "")
+            narrative_direction=result.get("narrative_direction", ""),
         )
-    
+
+    # ── Network group assignment ─────────────────────────────────────────────
+    def _assign_network_groups(self, agents: List[AgentActivityConfig]):
+        """Assign peer/family group_ids to enable network effects in simulation."""
+        consumer_types = {
+            "tier1consumer", "tier2consumer", "tier3consumer", "consumer",
+            "person", "student", "parent", "homemaker", "homemakerconsumer",
+            "urbanprofessional", "hniconsumer", "massconsumer", "aspirationalconsumer",
+        }
+        consumers = [a for a in agents if a.entity_type.lower() in consumer_types]
+        random.shuffle(consumers)
+
+        # Cluster size 3–6 (WhatsApp family/peer group typical size)
+        group_id = 0
+        i = 0
+        while i < len(consumers):
+            size = random.choice([3, 4, 5, 6])
+            cluster = consumers[i:i + size]
+            for a in cluster:
+                a.group_id = group_id
+                # Family/homemaker types → stronger peer influence
+                if a.entity_type.lower() in ("parent", "homemaker", "homemakerconsumer"):
+                    a.peer_influence_strength = random.uniform(0.7, 0.9)
+                else:
+                    a.peer_influence_strength = random.uniform(0.4, 0.7)
+            group_id += 1
+            i += size
+
+    # ── Initial post → agent matching ────────────────────────────────────────
     def _assign_initial_post_agents(
-        self,
-        event_config: EventConfig,
-        agent_configs: List[AgentActivityConfig]
+        self, event_config: EventConfig, agents: List[AgentActivityConfig],
     ) -> EventConfig:
-        """
-        为初始帖子分配合适的发布者 Agent
-        
-        根据每个帖子的 poster_type 匹配最合适的 agent_id
-        """
         if not event_config.initial_posts:
             return event_config
-        
-        # 按实体类型建立 agent 索引
-        agents_by_type: Dict[str, List[AgentActivityConfig]] = {}
-        for agent in agent_configs:
-            etype = agent.entity_type.lower()
-            if etype not in agents_by_type:
-                agents_by_type[etype] = []
-            agents_by_type[etype].append(agent)
-        
-        # 类型映射表（处理 LLM 可能输出的不同格式）
-        type_aliases = {
-            "official": ["official", "university", "governmentagency", "government"],
-            "university": ["university", "official"],
-            "mediaoutlet": ["mediaoutlet", "media"],
-            "student": ["student", "person"],
-            "professor": ["professor", "expert", "teacher"],
-            "alumni": ["alumni", "person"],
-            "organization": ["organization", "ngo", "company", "group"],
-            "person": ["person", "student", "alumni"],
+
+        by_type: Dict[str, List[AgentActivityConfig]] = {}
+        for a in agents:
+            by_type.setdefault(a.entity_type.lower(), []).append(a)
+
+        aliases = {
+            "brand":          ["brand", "company", "competitorbrand"],
+            "mediaoutlet":    ["mediaoutlet", "media", "regionalmediaoutlet",
+                               "finmediaoutlet", "mediaamplifier"],
+            "influencer":     ["influencer", "creator", "microinfluencer", "nanoinfluencer",
+                               "megacreator", "finfluencercreator", "reviewer"],
+            "tier1consumer":  ["tier1consumer", "urbanprofessional", "hniconsumer", "person", "consumer"],
+            "tier2consumer":  ["tier2consumer", "aspirationalconsumer", "person", "consumer"],
+            "tier3consumer":  ["tier3consumer", "masconsumer", "massconsumer", "person", "consumer"],
+            "consumer":       ["consumer", "person", "student", "homemaker"],
+            "consumersegment":["consumersegment", "consumer", "person"],
+            "peergroup":      ["peergroup", "person", "consumer"],
+            "familygroup":    ["familygroup", "parent", "homemaker", "person"],
+            "regulator":      ["regulator", "asciregulator", "sebiregulator", "fssairegulator"],
+            "retailer":       ["retailer", "quickcommerceplatform", "moderntraderetailer",
+                               "kiranaretailer"],
+            "platform":       ["platform", "organization"],
+            "person":         ["person", "consumer", "student"],
+            "organization":   ["organization", "brand", "ngo", "company"],
+            "student":        ["student", "person", "consumer"],
+            "parent":         ["parent", "homemaker", "person"],
+            "homemaker":      ["homemaker", "homemakerconsumer", "person"],
         }
-        
-        # 记录每种类型已使用的 agent 索引，避免重复使用同一个 agent
-        used_indices: Dict[str, int] = {}
-        
-        updated_posts = []
+
+        used: Dict[str, int] = {}
+        updated = []
+
         for post in event_config.initial_posts:
-            poster_type = post.get("poster_type", "").lower()
+            ptype = post.get("poster_type", "").lower()
             content = post.get("content", "")
-            
-            # 尝试找到匹配的 agent
-            matched_agent_id = None
-            
-            # 1. 直接匹配
-            if poster_type in agents_by_type:
-                agents = agents_by_type[poster_type]
-                idx = used_indices.get(poster_type, 0) % len(agents)
-                matched_agent_id = agents[idx].agent_id
-                used_indices[poster_type] = idx + 1
+            matched_id = None
+
+            if ptype in by_type:
+                ags = by_type[ptype]
+                idx = used.get(ptype, 0) % len(ags)
+                matched_id = ags[idx].agent_id
+                used[ptype] = idx + 1
             else:
-                # 2. 使用别名匹配
-                for alias_key, aliases in type_aliases.items():
-                    if poster_type in aliases or alias_key == poster_type:
-                        for alias in aliases:
-                            if alias in agents_by_type:
-                                agents = agents_by_type[alias]
-                                idx = used_indices.get(alias, 0) % len(agents)
-                                matched_agent_id = agents[idx].agent_id
-                                used_indices[alias] = idx + 1
+                for akey, alist in aliases.items():
+                    if ptype in alist or akey == ptype:
+                        for a in alist:
+                            if a in by_type:
+                                ags = by_type[a]
+                                idx = used.get(a, 0) % len(ags)
+                                matched_id = ags[idx].agent_id
+                                used[a] = idx + 1
                                 break
-                    if matched_agent_id is not None:
+                    if matched_id is not None:
                         break
-            
-            # 3. 如果仍未找到，使用影响力最高的 agent
-            if matched_agent_id is None:
-                logger.warning(f"未找到类型 '{poster_type}' 的匹配 Agent，使用影响力最高的 Agent")
-                if agent_configs:
-                    # 按影响力排序，选择影响力最高的
-                    sorted_agents = sorted(agent_configs, key=lambda a: a.influence_weight, reverse=True)
-                    matched_agent_id = sorted_agents[0].agent_id
+
+            if matched_id is None:
+                logger.warning(f"No match for poster_type='{ptype}', using top-influence agent.")
+                if agents:
+                    matched_id = sorted(agents, key=lambda x: x.influence_weight, reverse=True)[0].agent_id
                 else:
-                    matched_agent_id = 0
-            
-            updated_posts.append({
+                    matched_id = 0
+
+            updated.append({
                 "content": content,
                 "poster_type": post.get("poster_type", "Unknown"),
-                "poster_agent_id": matched_agent_id
+                "poster_agent_id": matched_id,
             })
-            
-            logger.info(f"初始帖子分配: poster_type='{poster_type}' -> agent_id={matched_agent_id}")
-        
-        event_config.initial_posts = updated_posts
+            logger.info(f"Initial post: {ptype!r} -> agent_id={matched_id}")
+
+        event_config.initial_posts = updated
         return event_config
-    
+
+    # ── Agent configs (batched LLM + rule fallback) ──────────────────────────
     def _generate_agent_configs_batch(
-        self,
-        context: str,
-        entities: List[EntityNode],
-        start_idx: int,
-        simulation_requirement: str
+        self, context, entities: List[EntityNode],
+        start_idx: int, simulation_requirement: str,
     ) -> List[AgentActivityConfig]:
-        """分批生成Agent配置"""
-        
-        # 构建实体信息（使用配置的摘要长度）
         entity_list = []
-        summary_len = self.AGENT_SUMMARY_LENGTH
         for i, e in enumerate(entities):
             entity_list.append({
                 "agent_id": start_idx + i,
                 "entity_name": e.name,
                 "entity_type": e.get_entity_type() or "Unknown",
-                "summary": e.summary[:summary_len] if e.summary else ""
+                "summary": e.summary[: self.AGENT_SUMMARY_LENGTH] if e.summary else "",
             })
-        
-        prompt = f"""基于以下信息，为每个实体生成社交媒体活动配置。
 
-模拟需求: {simulation_requirement}
+        prompt = f"""Generate Indian-market simulation configs.
 
-## 实体列表
+Campaign: {simulation_requirement}
+
+## Entities
 ```json
 {json.dumps(entity_list, ensure_ascii=False, indent=2)}
 ```
 
-## 任务
-为每个实体生成活动配置，注意：
-- **时间符合中国人作息**：凌晨0-5点几乎不活动，晚间19-22点最活跃
-- **官方机构**（University/GovernmentAgency）：活跃度低(0.1-0.3)，工作时间(9-17)活动，响应慢(60-240分钟)，影响力高(2.5-3.0)
-- **媒体**（MediaOutlet）：活跃度中(0.4-0.6)，全天活动(8-23)，响应快(5-30分钟)，影响力高(2.0-2.5)
-- **个人**（Student/Person/Alumni）：活跃度高(0.6-0.9)，主要晚间活动(18-23)，响应快(1-15分钟)，影响力低(0.8-1.2)
-- **公众人物/专家**：活跃度中(0.4-0.6)，影响力中高(1.5-2.0)
+## Rules — realistic Indian behaviour + decision-driving traits
 
-返回JSON格式（不要markdown）：
+**Brand/CompetitorBrand (official)**
+- activity 0.3–0.5, hours 10–22 IST, delay 30–120min, influence 2.0–2.8, stance=observer
+- traits: price_sensitivity 0.3, trust 0.5, influence_sus 0.2, decision_speed 0.5
+
+**MediaOutlet/RegionalMediaOutlet/MediaAmplifier**
+- activity 0.4–0.6, hours 8–23 IST, delay 5–30min, influence 2.2–2.6, stance=observer
+- traits: trust 0.6, influence_sus 0.2
+
+**Influencer/Creator/Reviewer/FinfluencerCreator**
+- activity 0.6–0.8, hours 11–23 IST, delay 5–30min, influence 1.8–2.5
+- traits: influence_sus 0.6, trust 0.5, decision_speed 0.7
+
+**Tier1Consumer (metros, pro)**
+- activity 0.5–0.7, hours 8–10 + 19–23 IST, delay 1–15min, influence 0.9–1.2
+- traits: price_sensitivity 0.3–0.5, trust 0.5, influence_sus 0.5, decision_speed 0.6
+
+**Tier2Consumer (Pune/Jaipur/Kochi, value_hunter or aspirational)**
+- activity 0.6–0.8, hours 9–14 + 18–23 IST, delay 2–20min, influence 0.8–1.1
+- traits: price_sensitivity 0.6–0.8, trust 0.5, influence_sus 0.6, decision_speed 0.4–0.6
+
+**Tier3Consumer (Patna/Ranchi, WhatsApp-heavy)**
+- activity 0.4–0.6, hours 18–23 IST, delay 5–45min, influence 0.6–0.9
+- traits: price_sensitivity 0.7–0.9, trust 0.7, influence_sus 0.7, decision_speed 0.3–0.5
+
+**Regulator (ASCI/SEBI/FSSAI)**
+- activity 0.1–0.2, hours 10–17 weekdays, delay 240–1440min, influence 3.0
+- traits: price 0.0, trust 0.8, influence_sus 0.1, decision_speed 0.2
+
+**Retailer/QuickCommercePlatform**
+- activity 0.4–0.6, hours 9–23 IST, delay 15–60min, influence 1.5–2.0, stance=observer
+
+**Student**
+- activity 0.7–0.9, hours 12–13 + 16–23 + 0–1 IST, delay 1–15min, influence 0.8
+- traits: price 0.7, trust 0.4, influence_sus 0.8, decision_speed 0.7
+
+**Parent/Homemaker**
+- activity 0.5–0.6, hours 9–11 + 14–16 + 20–21 IST, delay 10–60min, influence 0.9
+- traits: price 0.6, trust 0.7, influence_sus 0.4, decision_speed 0.3
+
+**Sentiment bias (CRITICAL — create conflict, not neutrality)**
+- Brand → 0.15 to 0.30 (positive own products)
+- Competitor → -0.20 to -0.05
+- SkepticalResearcher / regulator-adjacent → -0.40 to -0.10
+- Tier2 aspirational → -0.10 to 0.30 (mixed)
+- Tier3 value_hunter → -0.30 to 0.15
+- DO NOT set all to 0.0 — unrealistic.
+
+Return PURE JSON (no markdown):
 {{
-    "agent_configs": [
-        {{
-            "agent_id": <必须与输入一致>,
-            "activity_level": <0.0-1.0>,
-            "posts_per_hour": <发帖频率>,
-            "comments_per_hour": <评论频率>,
-            "active_hours": [<活跃小时列表，考虑中国人作息>],
-            "response_delay_min": <最小响应延迟分钟>,
-            "response_delay_max": <最大响应延迟分钟>,
-            "sentiment_bias": <-1.0到1.0>,
-            "stance": "<supportive/opposing/neutral/observer>",
-            "influence_weight": <影响力权重>
-        }},
-        ...
-    ]
+  "agent_configs": [
+    {{
+      "agent_id": <must match input>,
+      "activity_level": <0.0–1.0>,
+      "posts_per_hour": <float>,
+      "comments_per_hour": <float>,
+      "active_hours": [<0–23 IST>],
+      "response_delay_min": <int>,
+      "response_delay_max": <int>,
+      "sentiment_bias": <-1.0 to 1.0, NOT 0.0>,
+      "stance": "<supportive|opposing|neutral|observer>",
+      "influence_weight": <float>,
+      "price_sensitivity": <0.0–1.0>,
+      "trust_factor": <0.0–1.0>,
+      "influence_susceptibility": <0.0–1.0>,
+      "decision_speed": <0.0–1.0>,
+      "opinion_shift_rate": <0.05–0.3>
+    }}
+  ]
 }}"""
 
-        system_prompt = "你是社交媒体行为分析专家。返回纯JSON，配置需符合中国人作息习惯。"
-        
+        sys = ("You are an Indian social-media behaviour analyst. Return PURE JSON. "
+               "Match IST rhythm, tier-based patterns, and set NON-ZERO sentiment biases "
+               "so the simulation has realistic conflict.")
         try:
-            result = self._call_llm_with_retry(prompt, system_prompt)
-            llm_configs = {cfg["agent_id"]: cfg for cfg in result.get("agent_configs", [])}
+            result = self._call_llm_with_retry(prompt, sys)
+            llm_by_id = {cfg["agent_id"]: cfg for cfg in result.get("agent_configs", [])}
         except Exception as e:
-            logger.warning(f"Agent配置批次LLM生成失败: {e}, 使用规则生成")
-            llm_configs = {}
-        
-        # 构建AgentActivityConfig对象
-        configs = []
-        for i, entity in enumerate(entities):
-            agent_id = start_idx + i
-            cfg = llm_configs.get(agent_id, {})
-            
-            # 如果LLM没有生成，使用规则生成
-            if not cfg:
-                cfg = self._generate_agent_config_by_rule(entity)
-            
-            config = AgentActivityConfig(
-                agent_id=agent_id,
-                entity_uuid=entity.uuid,
-                entity_name=entity.name,
-                entity_type=entity.get_entity_type() or "Unknown",
-                activity_level=cfg.get("activity_level", 0.5),
-                posts_per_hour=cfg.get("posts_per_hour", 0.5),
-                comments_per_hour=cfg.get("comments_per_hour", 1.0),
-                active_hours=cfg.get("active_hours", list(range(9, 23))),
-                response_delay_min=cfg.get("response_delay_min", 5),
-                response_delay_max=cfg.get("response_delay_max", 60),
-                sentiment_bias=cfg.get("sentiment_bias", 0.0),
-                stance=cfg.get("stance", "neutral"),
-                influence_weight=cfg.get("influence_weight", 1.0)
-            )
-            configs.append(config)
-        
-        return configs
-    
-    def _generate_agent_config_by_rule(self, entity: EntityNode) -> Dict[str, Any]:
-        """基于规则生成单个Agent配置（中国人作息）"""
-        entity_type = (entity.get_entity_type() or "Unknown").lower()
-        
-        if entity_type in ["university", "governmentagency", "ngo"]:
-            # 官方机构：工作时间活动，低频率，高影响力
-            return {
-                "activity_level": 0.2,
-                "posts_per_hour": 0.1,
-                "comments_per_hour": 0.05,
-                "active_hours": list(range(9, 18)),  # 9:00-17:59
-                "response_delay_min": 60,
-                "response_delay_max": 240,
-                "sentiment_bias": 0.0,
-                "stance": "neutral",
-                "influence_weight": 3.0
-            }
-        elif entity_type in ["mediaoutlet"]:
-            # 媒体：全天活动，中等频率，高影响力
-            return {
-                "activity_level": 0.5,
-                "posts_per_hour": 0.8,
-                "comments_per_hour": 0.3,
-                "active_hours": list(range(7, 24)),  # 7:00-23:59
-                "response_delay_min": 5,
-                "response_delay_max": 30,
-                "sentiment_bias": 0.0,
-                "stance": "observer",
-                "influence_weight": 2.5
-            }
-        elif entity_type in ["professor", "expert", "official"]:
-            # 专家/教授：工作+晚间活动，中等频率
-            return {
-                "activity_level": 0.4,
-                "posts_per_hour": 0.3,
-                "comments_per_hour": 0.5,
-                "active_hours": list(range(8, 22)),  # 8:00-21:59
-                "response_delay_min": 15,
-                "response_delay_max": 90,
-                "sentiment_bias": 0.0,
-                "stance": "neutral",
-                "influence_weight": 2.0
-            }
-        elif entity_type in ["student"]:
-            # 学生：晚间为主，高频率
-            return {
-                "activity_level": 0.8,
-                "posts_per_hour": 0.6,
-                "comments_per_hour": 1.5,
-                "active_hours": [8, 9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23],  # 上午+晚间
-                "response_delay_min": 1,
-                "response_delay_max": 15,
-                "sentiment_bias": 0.0,
-                "stance": "neutral",
-                "influence_weight": 0.8
-            }
-        elif entity_type in ["alumni"]:
-            # 校友：晚间为主
-            return {
-                "activity_level": 0.6,
-                "posts_per_hour": 0.4,
-                "comments_per_hour": 0.8,
-                "active_hours": [12, 13, 19, 20, 21, 22, 23],  # 午休+晚间
-                "response_delay_min": 5,
-                "response_delay_max": 30,
-                "sentiment_bias": 0.0,
-                "stance": "neutral",
-                "influence_weight": 1.0
-            }
-        else:
-            # 普通人：晚间高峰
-            return {
-                "activity_level": 0.7,
-                "posts_per_hour": 0.5,
-                "comments_per_hour": 1.2,
-                "active_hours": [9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23],  # 白天+晚间
-                "response_delay_min": 2,
-                "response_delay_max": 20,
-                "sentiment_bias": 0.0,
-                "stance": "neutral",
-                "influence_weight": 1.0
-            }
-    
+            logger.warning(f"Agent-batch LLM failed: {e}, rule fallback")
+            llm_by_id = {}
 
+        out = []
+        for i, entity in enumerate(entities):
+            aid = start_idx + i
+            llm_cfg = llm_by_id.get(aid)
+            if llm_cfg:
+                cfg = self._cfg_from_llm(aid, entity, llm_cfg)
+            else:
+                cfg = self._agent_config_by_rule(entity)
+                cfg.agent_id = aid
+            out.append(cfg)
+        return out
+
+    def _cfg_from_llm(
+        self, agent_id: int, entity: EntityNode, llm: Dict[str, Any],
+    ) -> AgentActivityConfig:
+        return AgentActivityConfig(
+            agent_id=agent_id,
+            entity_uuid=entity.uuid,
+            entity_name=entity.name,
+            entity_type=entity.get_entity_type() or "Unknown",
+            activity_level=llm.get("activity_level", 0.5),
+            posts_per_hour=llm.get("posts_per_hour", 0.5),
+            comments_per_hour=llm.get("comments_per_hour", 1.0),
+            active_hours=llm.get("active_hours", list(range(9, 23))),
+            response_delay_min=llm.get("response_delay_min", 5),
+            response_delay_max=llm.get("response_delay_max", 60),
+            sentiment_bias=llm.get("sentiment_bias", 0.0),
+            stance=llm.get("stance", "neutral"),
+            influence_weight=llm.get("influence_weight", 1.0),
+            price_sensitivity=llm.get("price_sensitivity", 0.5),
+            trust_factor=llm.get("trust_factor", 0.5),
+            influence_susceptibility=llm.get("influence_susceptibility", 0.5),
+            decision_speed=llm.get("decision_speed", 0.5),
+            opinion_shift_rate=llm.get("opinion_shift_rate", 0.1),
+        )
+
+    def _agent_config_by_rule(
+        self, entity: EntityNode, overrides: Optional[Dict[str, Any]] = None,
+    ) -> AgentActivityConfig:
+        """Rule-based fallback, realistic for Indian market."""
+        et = (entity.get_entity_type() or "Unknown").lower()
+
+        def rand_bias(lo, hi):
+            return round(random.uniform(lo, hi), 2)
+
+        if et in ("brand", "competitorbrand", "company"):
+            cfg = dict(
+                activity_level=0.4, posts_per_hour=0.3, comments_per_hour=0.2,
+                active_hours=list(range(10, 23)),
+                response_delay_min=30, response_delay_max=120,
+                sentiment_bias=rand_bias(-0.10, 0.25) if et == "competitorbrand" else rand_bias(0.15, 0.30),
+                stance="observer", influence_weight=2.4,
+                price_sensitivity=0.3, trust_factor=0.5,
+                influence_susceptibility=0.2, decision_speed=0.5,
+                opinion_shift_rate=0.05,
+            )
+        elif et in ("mediaoutlet", "regionalmediaoutlet", "finmediaoutlet",
+                    "educationmediaoutlet", "automediaoutlet", "mediaamplifier"):
+            cfg = dict(
+                activity_level=0.5, posts_per_hour=0.8, comments_per_hour=0.3,
+                active_hours=list(range(8, 24)),
+                response_delay_min=5, response_delay_max=30,
+                sentiment_bias=rand_bias(-0.10, 0.10),
+                stance="observer", influence_weight=2.5,
+                price_sensitivity=0.4, trust_factor=0.6,
+                influence_susceptibility=0.2, decision_speed=0.6,
+                opinion_shift_rate=0.1,
+            )
+        elif et in ("influencer", "creator", "nanoinfluencer", "microinfluencer",
+                    "megacreator", "reviewer", "finfluencercreator", "foodcreator",
+                    "autoinfluencer", "educationinfluencer", "regionalinfluencer"):
+            cfg = dict(
+                activity_level=0.7, posts_per_hour=0.5, comments_per_hour=1.2,
+                active_hours=list(range(11, 24)),
+                response_delay_min=5, response_delay_max=30,
+                sentiment_bias=rand_bias(-0.20, 0.30),
+                stance="neutral", influence_weight=2.0,
+                price_sensitivity=0.4, trust_factor=0.5,
+                influence_susceptibility=0.6, decision_speed=0.7,
+                opinion_shift_rate=0.15,
+            )
+        elif et in ("tier1consumer", "urbanprofessional", "hniconsumer"):
+            cfg = dict(
+                activity_level=0.65, posts_per_hour=0.4, comments_per_hour=1.0,
+                active_hours=[8, 9, 10, 12, 13, 19, 20, 21, 22, 23],
+                response_delay_min=1, response_delay_max=15,
+                sentiment_bias=rand_bias(-0.15, 0.25),
+                stance="neutral", influence_weight=1.1,
+                price_sensitivity=rand_bias(0.3, 0.5),
+                trust_factor=0.5, influence_susceptibility=0.5,
+                decision_speed=0.6, opinion_shift_rate=0.15,
+            )
+        elif et in ("tier2consumer", "aspirationalconsumer"):
+            cfg = dict(
+                activity_level=0.7, posts_per_hour=0.5, comments_per_hour=1.3,
+                active_hours=[9, 10, 11, 13, 14, 18, 19, 20, 21, 22, 23],
+                response_delay_min=2, response_delay_max=20,
+                sentiment_bias=rand_bias(-0.10, 0.30),
+                stance="neutral", influence_weight=0.95,
+                price_sensitivity=rand_bias(0.6, 0.8),
+                trust_factor=0.5, influence_susceptibility=0.6,
+                decision_speed=rand_bias(0.4, 0.6),
+                opinion_shift_rate=0.2,
+            )
+        elif et in ("tier3consumer", "massconsumer", "masconsumer"):
+            cfg = dict(
+                activity_level=0.5, posts_per_hour=0.3, comments_per_hour=1.0,
+                active_hours=[18, 19, 20, 21, 22, 23],
+                response_delay_min=5, response_delay_max=45,
+                sentiment_bias=rand_bias(-0.30, 0.15),
+                stance="neutral", influence_weight=0.75,
+                price_sensitivity=rand_bias(0.7, 0.9),
+                trust_factor=rand_bias(0.6, 0.8),
+                influence_susceptibility=0.7,
+                decision_speed=rand_bias(0.3, 0.5),
+                opinion_shift_rate=0.25,
+            )
+        elif et in ("regulator", "asciregulator", "sebiregulator", "fssairegulator",
+                    "governmentagency", "trairegulator"):
+            cfg = dict(
+                activity_level=0.15, posts_per_hour=0.1, comments_per_hour=0.05,
+                active_hours=list(range(10, 17)),
+                response_delay_min=240, response_delay_max=1440,
+                sentiment_bias=rand_bias(-0.40, -0.10),
+                stance="neutral", influence_weight=3.0,
+                price_sensitivity=0.0, trust_factor=0.8,
+                influence_susceptibility=0.1, decision_speed=0.2,
+                opinion_shift_rate=0.05,
+            )
+        elif et in ("retailer", "quickcommerceplatform", "moderntraderetailer",
+                    "kiranaretailer", "d2cretailer"):
+            cfg = dict(
+                activity_level=0.5, posts_per_hour=0.4, comments_per_hour=0.5,
+                active_hours=list(range(9, 24)),
+                response_delay_min=15, response_delay_max=60,
+                sentiment_bias=rand_bias(0.05, 0.20),
+                stance="observer", influence_weight=1.8,
+                price_sensitivity=0.5, trust_factor=0.6,
+                influence_susceptibility=0.3, decision_speed=0.6,
+                opinion_shift_rate=0.1,
+            )
+        elif et in ("student", "college", "schoolstudent"):
+            cfg = dict(
+                activity_level=0.8, posts_per_hour=0.6, comments_per_hour=1.6,
+                active_hours=[12, 13, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1],
+                response_delay_min=1, response_delay_max=15,
+                sentiment_bias=rand_bias(-0.15, 0.35),
+                stance="neutral", influence_weight=0.85,
+                price_sensitivity=rand_bias(0.6, 0.9),
+                trust_factor=rand_bias(0.3, 0.5),
+                influence_susceptibility=rand_bias(0.7, 0.9),
+                decision_speed=0.7, opinion_shift_rate=0.3,
+            )
+        elif et in ("parent", "homemaker", "homemakerconsumer"):
+            cfg = dict(
+                activity_level=0.55, posts_per_hour=0.3, comments_per_hour=0.8,
+                active_hours=[9, 10, 11, 14, 15, 16, 20, 21],
+                response_delay_min=10, response_delay_max=60,
+                sentiment_bias=rand_bias(-0.10, 0.20),
+                stance="neutral", influence_weight=0.9,
+                price_sensitivity=rand_bias(0.5, 0.7),
+                trust_factor=rand_bias(0.6, 0.8),
+                influence_susceptibility=0.4,
+                decision_speed=rand_bias(0.3, 0.4),
+                opinion_shift_rate=0.1,
+            )
+        elif et in ("peergroup", "familygroup"):
+            cfg = dict(
+                activity_level=0.5, posts_per_hour=0.4, comments_per_hour=1.2,
+                active_hours=[9, 10, 11, 19, 20, 21, 22],
+                response_delay_min=5, response_delay_max=45,
+                sentiment_bias=rand_bias(-0.10, 0.20),
+                stance="neutral", influence_weight=1.4,
+                price_sensitivity=0.6, trust_factor=0.8,
+                influence_susceptibility=0.6, decision_speed=0.4,
+                opinion_shift_rate=0.15,
+            )
+        else:
+            cfg = dict(
+                activity_level=0.5, posts_per_hour=0.3, comments_per_hour=0.8,
+                active_hours=[9, 10, 11, 12, 13, 18, 19, 20, 21, 22],
+                response_delay_min=5, response_delay_max=30,
+                sentiment_bias=rand_bias(-0.15, 0.15),
+                stance="neutral", influence_weight=1.0,
+                price_sensitivity=0.5, trust_factor=0.5,
+                influence_susceptibility=0.5, decision_speed=0.5,
+                opinion_shift_rate=0.1,
+            )
+
+        if overrides:
+            cfg.update(overrides)
+
+        return AgentActivityConfig(
+            agent_id=0,
+            entity_uuid=entity.uuid,
+            entity_name=entity.name,
+            entity_type=entity.get_entity_type() or "Unknown",
+            **cfg,
+        )
