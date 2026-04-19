@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile app/__init__.py app/config.py app/models/project.py app/models/task.py app/api/__init__.py)",
+      "Bash(python -m py_compile app/api/graph.py)",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, '.'\\); from app import create_app; print\\('App creation works'\\)\")"
+    ]
+  }
+}

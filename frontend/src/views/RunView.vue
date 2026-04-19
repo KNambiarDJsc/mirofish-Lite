@@ -110,7 +110,9 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { loadCampaign, runSimulation, generateReport, saveSimResult } from '../api/mvp.js'
-import { UserButton } from '@clerk/vue'
+import { UserButton, useUser } from '@clerk/vue'
+
+const { user } = useUser()
 
 const router   = useRouter()
 const phase    = ref(1)
@@ -208,7 +210,7 @@ const runFlow = async () => {
   let simEvents = []
   try {
     const simPctAnim = animateStepPct(3, 80, 3000)
-    const simRes = await runSimulation(campaign.value)
+    const simRes = await runSimulation(user.value?.id, campaign.value)
     simEvents    = simRes.events || []
     await simPctAnim
     await animateStepPct(3, 100, 400)
@@ -227,7 +229,7 @@ const runFlow = async () => {
 
   try {
     const repPctAnim = animateStepPct(4, 80, 4000)
-    const repRes = await generateReport(campaign.value, simEvents)
+    const repRes = await generateReport(user.value?.id, campaign.value, simEvents)
     saveSimResult({
       campaign: campaign.value,
       events: simEvents,

@@ -23,7 +23,7 @@ logger = logging.getLogger("axonic.llm_router")
 
 # ── Model names (overridable via .env) ───────────────────────────────────────
 GROQ_MODEL   = os.environ.get("GROQ_MODEL",   "llama-3.3-70b-versatile")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
 # ── Lazy-initialised clients ─────────────────────────────────────────────────
 _groq_client    = None

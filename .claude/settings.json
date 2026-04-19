@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "npm",
+      "python",
+      "uv",
+      "grep",
+      "find",
+      "git",
+      "curl"
+    ],
+    "deny": [
+      "rm -rf /",
+      "rm -rf *"
+    ]
+  },
+  "hooks": {
+    "pre-commit": [
+      "cd backend && python -m pytest",
+      "cd frontend && npm run lint"
+    ],
+    "post-edit": [
+      "cd backend && uv run python -m black ."
+    ]
+  },
+  "environment": {
+    "backend_port": "5001",
+    "frontend_port": "5173",
+    "python_version": ">=3.11",
+    "node_version": ">=18"
+  }
+}

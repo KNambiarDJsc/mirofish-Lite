@@ -2,12 +2,12 @@ import service from './index.js'
 
 const BASE = '/api/mvp'
 
-/** Generate a stable user ID for this browser session */
-export function getUserId() {
-  let id = localStorage.getItem('axonic_uid')
+/** Stable session ID as fallback */
+export function getSessionId() {
+  let id = localStorage.getItem('axonic_session_id')
   if (!id) {
     id = crypto.randomUUID()
-    localStorage.setItem('axonic_uid', id)
+    localStorage.setItem('axonic_session_id', id)
   }
   return id
 }
@@ -29,32 +29,34 @@ export function loadSimResult() {
 }
 
 /** POST /api/mvp/simulate */
-export async function runSimulation(campaign) {
+export async function runSimulation(user_id, campaign) {
   return service.post(`${BASE}/simulate`, {
-    user_id:  getUserId(),
+    user_id,
     campaign,
+    simulation_id: getSessionId()
   })
 }
 
 /** POST /api/mvp/report */
-export async function generateReport(campaign, events) {
+export async function generateReport(user_id, campaign, events) {
   return service.post(`${BASE}/report`, {
-    user_id:       getUserId(),
+    user_id,
     campaign,
     events,
-    simulation_id: crypto.randomUUID(),
+    simulation_id: getSessionId(),
   })
 }
 
 /** GET /api/mvp/balance */
-export async function getBalance() {
-  return service.get(`${BASE}/balance`, { params: { user_id: getUserId() } })
+export async function getBalance(user_id) {
+  if (!user_id) return { compute_units: 0, credits_display: 0 }
+  return service.get(`${BASE}/balance`, { params: { user_id } })
 }
 
 /** POST /api/mvp/purchase */
-export async function purchaseCredits(pack, paymentId) {
+export async function purchaseCredits(user_id, pack, paymentId) {
   return service.post(`${BASE}/purchase`, {
-    user_id:    getUserId(),
+    user_id,
     pack,
     payment_id: paymentId,
   })

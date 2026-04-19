@@ -118,8 +118,10 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { saveCampaign, getBalance, getUserId } from '../api/mvp.js'
-import { UserButton } from '@clerk/vue'
+import { saveCampaign, getBalance } from '../api/mvp.js'
+import { UserButton, useUser } from '@clerk/vue'
+
+const { user } = useUser()
 
 const router     = useRouter()
 const fileInput  = ref(null)
@@ -152,16 +154,16 @@ const readFile = (file) => new Promise(resolve => {
 })
 
 onMounted(async () => {
-  getUserId()
+  if (!user.value) return
   try {
-    const res = await getBalance()
+    const res = await getBalance(user.value.id)
     creditsDisplay.value = res.credits_display ?? '3.0'
   } catch { creditsDisplay.value = '3.0' }
   setTimeout(() => { ready.value = true }, 80)
 })
 
 async function launch() {
-  if (!canSubmit.value || submitting.value) return
+  if (!canSubmit.value || submitting.value || !user.value) return
   error.value = ''
   submitting.value = true
   try {
